@@ -1,0 +1,15 @@
+[project]
+name = "taskforge"
+version = "0.1.0"
+description = "Lightweight background job processing system"
+requires-python = ">=3.10"
+
+dependencies = [
+  "psycopg[binary]",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.black]
+line-length = 88
