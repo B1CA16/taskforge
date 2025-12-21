@@ -2,9 +2,9 @@
 
 ## Core Concepts
 
--   Job
--   Queue
--   Worker
+-   **Job**: A unit of work to be executed in the background.
+-   **Queue**: A named container for jobs. Each job belongs to a single queue.
+-   **Worker**: A process that polls for jobs from a queue, executes them, and updates their status.
 
 ## Job Lifecycle
 
@@ -25,11 +25,14 @@
 -   Backoff strategy: exponential by default
 -   Jobs exceeding max attempts go to dead letter queue
 
-## Job Model Fields
+## Model Definitions
+
+### Job Model
 
 | Field           | Type      | Description                                                    |
 | --------------- | --------- | -------------------------------------------------------------- |
 | `id`            | UUID      | Unique identifier                                              |
+| `queue_id`      | UUID      | Foreign key to the `queues` table                              |
 | `type`          | string    | Job type / function to execute                                 |
 | `payload`       | JSON      | Data required for execution                                    |
 | `status`        | enum      | Current state (`pending`, `running`, `done`, `failed`, `dead`) |
@@ -42,6 +45,13 @@
 | `locked_at`     | timestamp | Time when job was claimed                                      |
 | `result`        | JSON      | Output of the job                                              |
 | `error_message` | text      | Last error message                                             |
+
+### Queue Model
+
+| Field  | Type   | Description                                                  |
+| ------ | ------ | ------------------------------------------------------------ |
+| `id`   | UUID   | Unique identifier                                            |
+| `name` | string | Unique name for the queue (e.g., `high_priority`, `default`) |
 
 ## Worker Responsibilities
 
