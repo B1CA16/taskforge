@@ -53,13 +53,21 @@
 | `id`   | UUID   | Unique identifier                                            |
 | `name` | string | Unique name for the queue (e.g., `high_priority`, `default`) |
 
-## Worker Responsibilities
+## Worker Design
 
--   Poll jobs from the queue
--   Claim jobs atomically
--   Execute job payload
--   Update job status
--   Handle retries, backoff, and errors
+The worker implementation is divided into three distinct components to ensure a clear separation of concerns.
+
+1.  **Job Registry (`jobs/registry.py`)**: Acts as a central mapping from a job's `type` (a string) to the actual Python function that should be executed. This is achieved via a simple `register` decorator.
+
+2.  **Executor (`worker/executor.py`)**: This component is responsible for the actual execution of a job's code. It fetches the appropriate function from the registry, calls it with the job's payload, and captures any return value or exceptions.
+
+3.  **Worker (`worker/worker.py`)**: This is the core component that runs the main polling loop. It is responsible for the entire lifecycle of a job, excluding its execution.
+    -   It polls the database periodically for pending jobs.
+    -   It uses a single, atomic `UPDATE ... RETURNING` query with `FOR UPDATE SKIP LOCKED` to find, lock, and update a job's status to `running` in one database round-trip.
+    -   It passes the locked job to the Executor.
+    -   Based on the outcome from the Executor, it updates the job's status to `done` or `failed` and records the result or error message.
+
+This design decouples the lifecycle management of a job (the Worker) from its business logic (the Executor and registered functions).
 
 ## Guidelines & Rules
 

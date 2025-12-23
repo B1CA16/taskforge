@@ -1,16 +1,7 @@
 import pytest
+from sqlalchemy import select
 from taskforge.db.connection import engine, get_session
 from taskforge.task_queue.models import Base, Job, Queue
-
-
-@pytest.fixture(scope="function")
-def db_session():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    session = next(get_session())
-    yield session
-    session.close()
-    Base.metadata.drop_all(bind=engine)
 
 
 def test_insert_job(db_session):
@@ -25,7 +16,8 @@ def test_insert_job(db_session):
     db_session.add(job)
     db_session.commit()
 
-    saved_job = db_session.query(Job).filter_by(type="test_job_type").first()
+    stmt = select(Job).filter_by(type="test_job_type")
+    saved_job = db_session.execute(stmt).scalars().first()
     print(f"Saved job: {saved_job.type}, status: {saved_job.status}")
 
 
