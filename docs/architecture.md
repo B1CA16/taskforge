@@ -20,10 +20,14 @@
 
 ### Retries & Backoff
 
--   Jobs track `attempts` and `max_attempts`
--   Failed jobs can be retried automatically
--   Backoff strategy: exponential by default
--   Jobs exceeding max attempts go to dead letter queue
+To handle transient failures, the system has a built-in automatic retry mechanism.
+
+-   **Process**: When a job fails, the `Worker` checks if `job.attempts < job.max_attempts`.
+-   **Retry**: If the job can be retried, the `Worker`:
+    1.  Increments `job.attempts`.
+    2.  Resets the status to `pending`.
+    3.  Calculates a new `scheduled_at` timestamp using an exponential backoff formula (`10 * (2 ** attempts)` seconds), preventing failing jobs from overwhelming the system.
+-   **Dead-Letter Queue**: If a job fails and has no retries left, its status is changed to `dead`. This effectively removes it from normal processing and places it in a "dead-letter" state, allowing for manual inspection later.
 
 ## Model Definitions
 
@@ -40,7 +44,7 @@
 | `updated_at`    | timestamp | Last status update                                             |
 | `scheduled_at`  | timestamp | When job is scheduled to run                                   |
 | `attempts`      | integer   | Number of attempts                                             |
-| `max_attempts`  | integer   | Maximum retry limit                                            |
+| `max_attempts`  | integer   | Maximum retry limit (configured globally, can be overridden per-job) |
 | `locked_by`     | string    | Worker that claimed the job                                    |
 | `locked_at`     | timestamp | Time when job was claimed                                      |
 | `result`        | JSON      | Output of the job                                              |
@@ -52,6 +56,14 @@
 | ------ | ------ | ------------------------------------------------------------ |
 | `id`   | UUID   | Unique identifier                                            |
 | `name` | string | Unique name for the queue (e.g., `high_priority`, `default`) |
+
+## Configuration
+
+Core system settings are managed through environment variables, typically loaded from a `.env` file at the root of the project. These settings are accessed via `src/taskforge/config/settings.py`.
+
+-   **`DEFAULT_MAX_ATTEMPTS`**: Defines the default maximum number of times a job will be attempted (including the initial run) before being moved to the `dead` state.
+    -   **Global Configuration**: Set this environment variable in your `.env` file to apply a project-wide default (e.g., `DEFAULT_MAX_ATTEMPTS=5`).
+    -   **Per-Job Override**: This global default can be overridden for individual jobs by explicitly setting the `max_attempts` parameter when enqueuing a job.
 
 ## Worker Design
 

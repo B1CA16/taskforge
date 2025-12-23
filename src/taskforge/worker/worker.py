@@ -29,7 +29,8 @@ class Worker:
         with get_session() as session:
             try:
                 # Atomically fetch and lock a job
-                raw_sql = text("""
+                raw_sql = text(
+                    """
                     UPDATE jobs
                     SET status = 'running', locked_by = :worker_id, locked_at = NOW()
                     WHERE id = (
@@ -44,8 +45,11 @@ class Worker:
                         LIMIT 1
                     )
                     RETURNING id;
-                """)
-                result = session.execute(raw_sql, {"worker_id": self.worker_id, "queue_names": self.queues})
+                """
+                )
+                result = session.execute(
+                    raw_sql, {"worker_id": self.worker_id, "queue_names": self.queues}
+                )
                 job_id = result.scalar_one_or_none()
 
                 if not job_id:
@@ -65,18 +69,28 @@ class Worker:
 
                 # Update job status
                 if error:
-                    job.status = JobStatus.failed
+                    job.attempts += 1
                     job.error_message = error
-                    print(f"Job {job.id} failed")
+                    if job.attempts < job.max_attempts:
+                        job.status = JobStatus.pending
+                        backoff_seconds = 10 * (2**job.attempts)
+                        job.scheduled_at = datetime.datetime.now(
+                            datetime.UTC
+                        ) + datetime.timedelta(seconds=backoff_seconds)
+                        print(
+                            f"Job {job.id} failed, will retry in {backoff_seconds} seconds"
+                        )
+                    else:
+                        job.status = JobStatus.dead
+                        print(f"Job {job.id} failed and moved to dead-letter queue")
                 else:
                     job.status = JobStatus.done
                     job.result = job_result
                     print(f"Job {job.id} completed successfully")
-                
+
                 job.updated_at = datetime.datetime.now(datetime.UTC)
                 session.commit()
 
             except Exception as e:
                 print(f"An unexpected error occurred: {e}")
                 session.rollback()
-
