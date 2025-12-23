@@ -33,22 +33,22 @@ To handle transient failures, the system has a built-in automatic retry mechanis
 
 ### Job Model
 
-| Field           | Type      | Description                                                    |
-| --------------- | --------- | -------------------------------------------------------------- |
-| `id`            | UUID      | Unique identifier                                              |
-| `queue_id`      | UUID      | Foreign key to the `queues` table                              |
-| `type`          | string    | Job type / function to execute                                 |
-| `payload`       | JSON      | Data required for execution                                    |
-| `status`        | enum      | Current state (`pending`, `running`, `done`, `failed`, `dead`) |
-| `created_at`    | timestamp | When job was created                                           |
-| `updated_at`    | timestamp | Last status update                                             |
-| `scheduled_at`  | timestamp | When job is scheduled to run                                   |
-| `attempts`      | integer   | Number of attempts                                             |
+| Field           | Type      | Description                                                          |
+| --------------- | --------- | -------------------------------------------------------------------- |
+| `id`            | UUID      | Unique identifier                                                    |
+| `queue_id`      | UUID      | Foreign key to the `queues` table                                    |
+| `type`          | string    | Job type / function to execute                                       |
+| `payload`       | JSON      | Data required for execution                                          |
+| `status`        | enum      | Current state (`pending`, `running`, `done`, `failed`, `dead`)       |
+| `created_at`    | timestamp | When job was created                                                 |
+| `updated_at`    | timestamp | Last status update                                                   |
+| `scheduled_at`  | timestamp | When job is scheduled to run                                         |
+| `attempts`      | integer   | Number of attempts                                                   |
 | `max_attempts`  | integer   | Maximum retry limit (configured globally, can be overridden per-job) |
-| `locked_by`     | string    | Worker that claimed the job                                    |
-| `locked_at`     | timestamp | Time when job was claimed                                      |
-| `result`        | JSON      | Output of the job                                              |
-| `error_message` | text      | Last error message                                             |
+| `locked_by`     | string    | Worker that claimed the job                                          |
+| `locked_at`     | timestamp | Time when job was claimed                                            |
+| `result`        | JSON      | Output of the job                                                    |
+| `error_message` | text      | Last error message                                                   |
 
 ### Queue Model
 

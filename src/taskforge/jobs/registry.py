@@ -7,9 +7,11 @@ def register(job_type: str) -> Callable:
     """
     Decorator to register a function as a job handler.
     """
+
     def decorator(func: Callable) -> Callable:
         _job_registry[job_type] = func
         return func
+
     return decorator
 
 
