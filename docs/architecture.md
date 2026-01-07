@@ -78,8 +78,31 @@ The worker implementation is divided into three distinct components to ensure a 
     -   It uses a single, atomic `UPDATE ... RETURNING` query with `FOR UPDATE SKIP LOCKED` to find, lock, and update a job's status to `running` in one database round-trip.
     -   It passes the locked job to the Executor.
     -   Based on the outcome from the Executor, it updates the job's status to `done` or `failed` and records the result or error message.
+    -   All its operations leverage the **Structured Logging** system for clear, machine-readable output.
 
 This design decouples the lifecycle management of a job (the Worker) from its business logic (the Executor and registered functions).
+
+## Observability
+
+To provide insight into the system's runtime behavior and state, TaskForge incorporates structured logging and a command-line inspection tool.
+
+### Structured Logging
+
+-   **Mechanism**: All application and worker logs are generated using Python's standard `logging` module, configured centrally via `src/taskforge/config/logging.py`.
+-   **Format**: Logs are emitted in **JSON format**, making them easy to parse, filter, and analyze with external tools (e.g., ELK stack, Splunk, cloud logging services).
+-   **Contextual Information**: The `Worker` uses `logging.LoggerAdapter` to automatically inject context such as `job_id`, `worker_id`, and `job_type` into every log message related to a specific job. This ensures that every event can be easily traced back to its origin.
+-   **SQLAlchemy Integration**: SQLAlchemy's internal engine logs are captured and routed through this same structured logging system, with its verbosity reduced to `WARNING` level by default to prevent excessive output, while still allowing critical database events to be seen.
+-   **Best Practice for Jobs**: User-defined job functions should accept an optional `logger` argument and use `logger.info()`, `logger.warning()`, etc., instead of `print()`, to integrate their messages into the structured log stream.
+
+### CLI Inspection Tools
+
+A basic command-line interface (CLI) is provided to inspect the state of the job queue directly from the terminal.
+
+-   **Location**: `src/taskforge/cli/main.py`
+-   **Usage**: The CLI tool also utilizes the structured logging system for its output.
+-   **`dead-letter` command**:
+    -   **Purpose**: Lists all jobs that are currently in the `dead` state, providing details such as job ID, type, attempts, failure timestamp, and the last error message. This is crucial for reviewing jobs that have exhausted all retry attempts and require manual intervention.
+    -   **How to run**: `python -m taskforge.cli.main dead-letter`
 
 ## Guidelines & Rules
 
