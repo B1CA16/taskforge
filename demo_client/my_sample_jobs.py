@@ -1,25 +1,36 @@
 from taskforge.jobs.registry import register
 import time
+from typing import Optional
+import logging
 
 
 @register("greet_user")
-def greet_user(name: str):
+def greet_user(name: str, logger: Optional[logging.Logger] = None):
     """A sample job that prints a greeting and simulates work."""
-    print(f"Hello, {name}! This is a registered job speaking.")
+    if logger:
+        logger.info(f"Hello, {name}! This is a registered job speaking.")
+    else:
+        print(f"Hello, {name}! This is a registered job speaking.")
     time.sleep(2)  # Simulate some work
     return f"Greeting job completed for {name}."
 
 
 @register("add_numbers")
-def add_numbers(a: int, b: int):
+def add_numbers(a: int, b: int, logger: Optional[logging.Logger] = None):
     """A sample job that adds two numbers."""
     result = a + b
-    print(f"Adding {a} and {b}. Result: {result}")
+    if logger:
+        logger.info(f"Adding {a} and {b}. Result: {result}")
+    else:
+        print(f"Adding {a} and {b}. Result: {result}")
     return result
 
 
 @register("fail_example")
-def fail_example(message: str):
+def fail_example(message: str, logger: Optional[logging.Logger] = None):
     """A sample job that is designed to fail."""
-    print(f"This job is designed to fail: {message}")
+    if logger:
+        logger.error(f"This job is designed to fail: {message}")
+    else:
+        print(f"This job is designed to fail: {message}")
     raise ValueError(f"Job failed: {message}")

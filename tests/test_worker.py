@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import Mock # Import Mock
 from taskforge.jobs.registry import register, get_job_func, _job_registry
 from taskforge.worker.executor import execute_job
 from taskforge.worker.worker import Worker
@@ -7,6 +8,12 @@ from taskforge.task_queue.models import Job, JobStatus, Queue
 
 # Sample functions to be used as jobs
 def success_job(x, y):
+    return x + y
+
+# New sample job function that accepts a logger
+def success_job_with_logger(x, y, logger=None):
+    if logger:
+        logger.info(f"Adding {x} and {y} with logger. Result: {x+y}")
     return x + y
 
 
@@ -54,7 +61,8 @@ def test_execute_successful_job(db_session):
     db_session.commit()
 
     job = Job(type="success", payload=[2, 3], queue_id=queue.id)
-    result, error = execute_job(job)
+    # Pass a dummy logger to avoid UnboundLocalError in executor
+    result, error = execute_job(job, logger=Mock())
 
     assert error is None
     assert result == 5
@@ -67,10 +75,32 @@ def test_execute_failing_job(db_session):
     db_session.commit()
 
     job = Job(type="failure", queue_id=queue.id)
-    result, error = execute_job(job)
+    # Pass a dummy logger to avoid UnboundLocalError in executor
+    result, error = execute_job(job, logger=Mock())
 
     assert result is None
     assert "ValueError: This job intentionally fails" in error
+
+
+def test_job_function_receives_logger(db_session):
+    """
+    Verify that a job function that accepts a 'logger' argument receives it
+    and can use it for logging.
+    """
+    mock_logger = Mock()
+    register("success_with_logger")(success_job_with_logger)
+    queue = Queue(name="default")
+    db_session.add(queue)
+    db_session.commit()
+
+    job = Job(type="success_with_logger", payload={"x": 5, "y": 10}, queue_id=queue.id)
+    # Pass the mock logger to execute_job
+    result, error = execute_job(job, logger=mock_logger)
+
+    assert error is None
+    assert result == 15
+    # Assert that the logger's info method was called with the expected message
+    mock_logger.info.assert_called_once_with("Adding 5 and 10 with logger. Result: 15")
 
 
 # --- Worker Tests ---
