@@ -1,5 +1,7 @@
 import pytest
-from unittest.mock import Mock # Import Mock
+from unittest.mock import Mock
+import datetime
+import time
 from taskforge.jobs.registry import register, get_job_func, _job_registry
 from taskforge.worker.executor import execute_job
 from taskforge.worker.worker import Worker
@@ -9,6 +11,7 @@ from taskforge.task_queue.models import Job, JobStatus, Queue
 # Sample functions to be used as jobs
 def success_job(x, y):
     return x + y
+
 
 # New sample job function that accepts a logger
 def success_job_with_logger(x, y, logger=None):
@@ -61,7 +64,6 @@ def test_execute_successful_job(db_session):
     db_session.commit()
 
     job = Job(type="success", payload=[2, 3], queue_id=queue.id)
-    # Pass a dummy logger to avoid UnboundLocalError in executor
     result, error = execute_job(job, logger=Mock())
 
     assert error is None
@@ -75,7 +77,6 @@ def test_execute_failing_job(db_session):
     db_session.commit()
 
     job = Job(type="failure", queue_id=queue.id)
-    # Pass a dummy logger to avoid UnboundLocalError in executor
     result, error = execute_job(job, logger=Mock())
 
     assert result is None
@@ -84,8 +85,7 @@ def test_execute_failing_job(db_session):
 
 def test_job_function_receives_logger(db_session):
     """
-    Verify that a job function that accepts a 'logger' argument receives it
-    and can use it for logging.
+    Verify that a job function that accepts a 'logger' argument receives it.
     """
     mock_logger = Mock()
     register("success_with_logger")(success_job_with_logger)
@@ -94,130 +94,175 @@ def test_job_function_receives_logger(db_session):
     db_session.commit()
 
     job = Job(type="success_with_logger", payload={"x": 5, "y": 10}, queue_id=queue.id)
-    # Pass the mock logger to execute_job
     result, error = execute_job(job, logger=mock_logger)
 
     assert error is None
     assert result == 15
-    # Assert that the logger's info method was called with the expected message
     mock_logger.info.assert_called_once_with("Adding 5 and 10 with logger. Result: 15")
+
+
+def test_execute_job_with_mismatched_payload(db_session):
+    """
+    Test that executing a job with a payload that doesn't match the
+    function's signature results in a graceful failure.
+    """
+    register("success")(success_job)
+    queue = Queue(name="default")
+    db_session.add(queue)
+    db_session.commit()
+
+    # Payload with too many arguments for the function
+    job = Job(type="success", payload=[1, 2, 3], queue_id=queue.id)
+    result, error = execute_job(job, logger=Mock())
+
+    assert result is None
+    assert "TypeError" in error
+    assert "takes 2 positional arguments but 3 were given" in error
+
+
+def test_execute_job_with_unsupported_payload_type(db_session):
+    """
+    Test that the executor raises a TypeError for unsupported payload types.
+    """
+    register("success")(success_job)
+    queue = Queue(name="default")
+    db_session.add(queue)
+    db_session.commit()
+
+    # A string is not a supported payload type
+    job = Job(type="success", payload="invalid_payload", queue_id=queue.id)
+    result, error = execute_job(job, logger=Mock())
+
+    assert result is None
+    assert "TypeError: Unsupported payload type: <class 'str'>" in error
 
 
 # --- Worker Tests ---
 
 
 def test_worker_claims_job(db_session):
-    # Register a dummy job
     register("process_data")(success_job)
-
-    # Create a queue and a pending job
     queue = Queue(name="default_queue")
     db_session.add(queue)
     db_session.commit()
-    job = Job(
-        type="process_data",
-        payload={"x": 2, "y": 3},
-        status=JobStatus.pending,
-        queue_id=queue.id,
-    )
+    job = Job(type="process_data", payload={"x": 2, "y": 3}, queue_id=queue.id)
     db_session.add(job)
     db_session.commit()
 
-    # Instantiate a worker and run one processing cycle
     worker = Worker(queues=["default_queue"])
     worker._process_job()
 
-    # Verify the job was processed
     processed_job = db_session.get(Job, job.id)
-    db_session.refresh(processed_job)  # Refresh from DB
     assert processed_job.status == JobStatus.done
     assert processed_job.locked_by == worker.worker_id
     assert processed_job.result == 5
 
 
-def test_worker_handles_failed_job(db_session):
-    # Register the failing job
+def test_worker_handles_failed_job_and_moves_to_dead(db_session):
     register("failing_task")(failure_job)
-
-    # Create a queue and a pending job with no retries left
     queue = Queue(name="default_queue")
     db_session.add(queue)
     db_session.commit()
-    job = Job(
-        type="failing_task",
-        status=JobStatus.pending,
-        queue_id=queue.id,
-        max_attempts=1,
-        attempts=0,
-    )
+    job = Job(type="failing_task", queue_id=queue.id, max_attempts=1)
     db_session.add(job)
     db_session.commit()
 
-    # Instantiate a worker and run one processing cycle
     worker = Worker(queues=["default_queue"])
     worker._process_job()
 
-    # Verify the job failed and was moved to the dead-letter queue
     processed_job = db_session.get(Job, job.id)
-    db_session.refresh(processed_job)  # Refresh from DB
     assert processed_job.status == JobStatus.dead
     assert processed_job.locked_by == worker.worker_id
     assert "ValueError: This job intentionally fails" in processed_job.error_message
 
 
-def test_worker_retries_job(db_session):
-    # Register the failing job
+def test_worker_retries_job_with_backoff(db_session):
     register("failing_task")(failure_job)
-
-    # Create a queue and a pending job with max_attempts
     queue = Queue(name="default_queue")
     db_session.add(queue)
     db_session.commit()
-    job = Job(
-        type="failing_task", status=JobStatus.pending, queue_id=queue.id, max_attempts=3
-    )
+    job = Job(type="failing_task", queue_id=queue.id, max_attempts=3)
     db_session.add(job)
     db_session.commit()
 
-    # Run one processing cycle
     worker = Worker(queues=["default_queue"])
     worker._process_job()
 
-    # Verify the job is scheduled for retry
     processed_job = db_session.get(Job, job.id)
-    db_session.refresh(processed_job)
-    assert processed_job.status == JobStatus.pending  # Should be pending for retry
+    assert processed_job.status == JobStatus.pending
     assert processed_job.attempts == 1
     assert processed_job.scheduled_at is not None
-    assert (
-        processed_job.scheduled_at - processed_job.updated_at
-    ).total_seconds() > 19  # 10 * (2**1)
+    # 10 * (2**1) = 20 seconds
+    expected_delay = 20
+    actual_delay = (processed_job.scheduled_at - processed_job.updated_at).total_seconds()
+    # Allow for a small tolerance in timing
+    assert actual_delay == pytest.approx(expected_delay, abs=1)
 
 
-def test_worker_moves_job_to_dead_state(db_session):
-    # Register the failing job
+def test_worker_moves_job_to_dead_state_after_retries(db_session):
     register("failing_task")(failure_job)
-
-    # Create a job that has one attempt left
     queue = Queue(name="default_queue")
     db_session.add(queue)
     db_session.commit()
-    job = Job(
-        type="failing_task",
-        status=JobStatus.pending,
-        queue_id=queue.id,
-        attempts=2,
-        max_attempts=3,
-    )
+    # Job has already failed twice
+    job = Job(type="failing_task", queue_id=queue.id, attempts=2, max_attempts=3)
     db_session.add(job)
     db_session.commit()
 
-    # Run one processing cycle
     worker = Worker(queues=["default_queue"])
     worker._process_job()
 
-    # Verify the job is moved to the dead state
     processed_job = db_session.get(Job, job.id)
-    db_session.refresh(processed_job)
     assert processed_job.status == JobStatus.dead
     assert processed_job.attempts == 3
+
+
+def test_worker_respects_scheduled_at_future(db_session):
+    """
+    Test that the worker does not pick up a job scheduled for the future.
+    """
+    register("success")(success_job)
+    queue = Queue(name="default_queue")
+    db_session.add(queue)
+    db_session.commit()
+
+    # Schedule a job to run in one hour
+    future_time = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
+    job = Job(type="success", queue_id=queue.id, scheduled_at=future_time)
+    db_session.add(job)
+    db_session.commit()
+
+    # Run a processing cycle
+    worker = Worker(queues=["default_queue"])
+    worker._process_job()
+
+    # The job should remain pending and not be locked
+    processed_job = db_session.get(Job, job.id)
+    assert processed_job.status == JobStatus.pending
+    assert processed_job.locked_by is None
+
+
+def test_worker_picks_up_past_due_job(db_session):
+    """
+    Test that the worker picks up a job whose scheduled_at time has passed.
+    """
+    register("success")(success_job)
+    queue = Queue(name="default_queue")
+    db_session.add(queue)
+    db_session.commit()
+
+    # Schedule a job to run one hour ago
+    past_time = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)
+    job = Job(type="success", payload=[1, 1], queue_id=queue.id, scheduled_at=past_time)
+    db_session.add(job)
+    db_session.commit()
+
+    # Run a processing cycle
+    worker = Worker(queues=["default_queue"])
+    worker._process_job()
+
+    # The job should have been processed
+    processed_job = db_session.get(Job, job.id)
+    assert processed_job.status == JobStatus.done
+    assert processed_job.result == 2
+    assert processed_job.locked_by is not None

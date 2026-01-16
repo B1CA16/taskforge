@@ -1,12 +1,35 @@
 [project]
 name = "taskforge"
-version = "0.1.0"
-description = "Lightweight background job processing system"
+version = "1.0.0"
+description = "A lightweight, durable, and reliable background job processing library for Python, built with a database-backed queueing system."
+readme = "README.md"
 requires-python = ">=3.10"
+license = { file = "LICENSE" }
+keywords = ["task", "job", "queue", "background", "worker", "async"]
+authors = [
+  { name = "Francisco Ferreira", email = "francisco.dinis.ferreira@gmail.com" }
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 
 dependencies = [
-  "psycopg[binary]",
+  "SQLAlchemy>=1.4",
+  "python-dotenv>=0.19",
+  "psycopg[binary]", # For PostgreSQL support
 ]
+
+[project.urls]
+"Homepage" = "https://github.com/B1CA16/taskforge"
+"Bug Tracker" = "https://github.com/B1CA16/taskforge/issues"
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
