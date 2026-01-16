@@ -1,82 +1,53 @@
 # TaskForge Testing Strategy
 
-This document outlines the testing strategy for the TaskForge project. It covers the current state of testing, identifies gaps, and proposes new tests to improve code quality and reliability.
+This document outlines the testing strategy and coverage for the TaskForge project. The test suite is designed to ensure the reliability, correctness, and robustness of the library.
 
-## Current Test Coverage
+## Testing Philosophy
 
-The project has a good foundation of unit and integration tests covering several key areas:
+Tests are a cornerstone of this project and are organized to cover functionality at different levels:
 
-- **Worker Lifecycle (`test_worker.py`):**
-  - **Success:** A worker can claim, execute, and mark a job as `done`.
-  - **Retry:** A failed job is correctly rescheduled with an exponential backoff.
-  - **Failure:** A job that exhausts its retries is moved to the `dead` state.
-- **Job Registry (`test_worker.py`):**
-  - The `@register` decorator correctly maps a job type to a function.
-  - The system raises an error when trying to execute an unregistered job.
-- **Job Execution (`test_worker.py`):**
-  - Payloads are correctly passed to the job functions.
-  - The executor can inject a `logger` into the job function.
-  - Exceptions during job execution are caught and recorded.
-- **Configuration (`test_config.py`):**
-  - Default settings are applied correctly.
-  - Per-job settings override global defaults.
-  - Settings can be configured via environment variables.
-- **CLI (`test_cli.py`):**
-  - The `dead-letter` command correctly displays failed jobs and handles the empty case.
+-   **Unit Tests:** For individual functions and isolated logic (e.g., job registration).
+-   **Integration Tests:** For components that work together (e.g., the worker processing a job from the database).
+-   **Edge Case Tests:** To ensure the system behaves gracefully with unexpected inputs or in specific scenarios.
 
-## Identified Gaps and Areas for Improvement
+The test suite uses `pytest` and an in-memory SQLite database for speed and isolation, allowing tests to run without external dependencies.
 
-While the current tests are valuable, several critical areas remain under-tested.
+## Comprehensive Test Coverage
 
-### 1. Database and Model Integrity
+The test suite provides extensive coverage across all major features of the library.
 
-The existing `test_queue_session.py` is insufficient and lacks assertions.
+### 1. Worker and Job Lifecycle
 
-- **Missing Tests:**
-  - **Uniqueness Constraints:** Test that creating a `Queue` with a duplicate name raises an `IntegrityError`.
-  - **Foreign Keys:** Test that creating a `Job` without a valid `queue_id` fails.
-  - **Model Relationships:** Explicitly test the `queue.jobs` and `job.queue` relationships.
+-   **Successful Execution:** A worker correctly claims, executes, and marks a job as `done`.
+-   **Automatic Retries:** A failed job is automatically retried with an exponential backoff delay, and its `attempts` count is incremented.
+-   **Dead-Letter Queue:** A job that exhausts all its retry attempts is correctly moved to the `dead` status.
 
-### 2. Worker Concurrency
+### 2. Concurrency
+-   **Race Condition Prevention:** A dedicated multi-threaded test (`test_concurrency.py`) simulates multiple workers polling the same queue. It verifies that the `FOR UPDATE SKIP LOCKED` mechanism correctly prevents race conditions, ensuring each job is processed **exactly once**.
 
-The most significant gap is the lack of concurrency testing. The `FOR UPDATE SKIP LOCKED` mechanism is designed to prevent race conditions, but this is not verified by any test.
+### 3. Job Scheduling
+-   **Future-Dated Jobs:** The worker correctly ignores jobs whose `scheduled_at` time is in the future.
+-   **Past-Due Jobs:** The worker correctly picks up jobs whose `scheduled_at` time has passed.
 
-- **Missing Tests:**
-  - **Race Conditions:** Simulate multiple workers (in separate threads or processes) trying to claim jobs from the same queue simultaneously. The test should verify that each job is processed only once.
+### 4. Job Definition and Execution
+-   **Job Registry:** The `@register` decorator works as expected, and the system correctly handles requests for unregistered jobs.
+-   **Executor Logic:** The executor correctly passes `dict` and `list` payloads to job functions.
+-   **Logger Injection:** A job-specific logger is successfully injected into job functions that request it.
+-   **Exception Handling:**
+    -   Exceptions raised within a job function are caught, and the error is logged.
+    -   The executor gracefully handles `TypeError` exceptions that arise from mismatched job payloads (e.g., wrong number of arguments).
+    -   The executor correctly fails jobs with unsupported payload types (e.g., a raw string).
 
-### 3. Executor and Job Edge Cases
+### 5. Database and Model Integrity
+-   **Uniqueness Constraints:** The database correctly enforces that queue names must be unique.
+-   **Foreign Key Constraints:** The database correctly prevents the creation of a `Job` with a `queue_id` that does not exist.
+-   **Model Relationships:** The SQLAlchemy relationships between `Job` and `Queue` are verified.
 
-The executor logic needs to be hardened against invalid inputs.
+### 6. Configuration
+-   **Default Settings:** Global settings like `DEFAULT_MAX_ATTEMPTS` are applied correctly.
+-   **Per-Job Overrides:** Job-specific settings (e.g., `max_attempts`) correctly override global defaults.
+-   **Environment Variables:** Configuration via environment variables is tested and works as expected.
 
-- **Missing Tests:**
-  - **Payload Mismatch:** Test the executor's behavior when a job's payload doesn't match the signature of the registered function (e.g., wrong argument names in a `dict`, or wrong number of elements in a `list`). This should result in a graceful failure, not an unhandled exception.
-  - **Unsupported Payload Type:** Test the `TypeError` that should be raised for payloads that are not a `list` or `dict`.
-
-### 4. Scheduled Jobs
-
-The worker has logic to ignore jobs scheduled for the future (`scheduled_at > NOW()`), but this is not tested.
-
-- **Missing Tests:**
-  - **Future Jobs:** Create a job with a `scheduled_at` in the future. Run a worker and assert that the job is *not* picked up.
-  - **Past-Due Jobs:** Create a job with a `scheduled_at` in the past. Run a worker and assert that the job *is* picked up.
-
-## Proposed Plan for New Tests
-
-To address these gaps, the following tests will be implemented:
-
-1.  **Refactor `test_queue_session.py`:**
-    - Rename it to `test_db_models.py` for clarity.
-    - Add tests for uniqueness, foreign key constraints, and model relationships.
-
-2.  **Create `test_concurrency.py`:**
-    - Implement a test that spawns multiple `Worker` instances in threads.
-    - Have them all poll a queue with multiple jobs.
-    - Use a shared, thread-safe counter or list to track how many times each job is executed.
-    - Assert that each job was processed exactly once.
-
-3.  **Expand `test_worker.py` (Executor section):**
-    - Add tests for mismatched `dict` and `list` payloads.
-    - Add a test to confirm the `TypeError` for invalid payload types.
-
-4.  **Expand `test_worker.py` (Worker section):**
-    - Add tests to verify the `scheduled_at` logic for future- and past-dated jobs.
+### 7. Command-Line Interface (CLI)
+-   The `dead-letter` command correctly fetches and displays jobs from the dead-letter queue.
+-   The command handles the case where the dead-letter queue is empty.
