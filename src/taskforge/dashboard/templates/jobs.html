@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% set active_page = "jobs" %}
+
+{% block title %}TaskForge - Jobs{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Jobs</h2>
+    <p>{{ total_count }} jobs found</p>
+</div>
+
+<!-- Filters -->
+<div class="filters">
+    <select name="status"
+            hx-get="/jobs"
+            hx-target="#jobs-table"
+            hx-include=".filters select, .filters input"
+            hx-push-url="true">
+        <option value="">All Statuses</option>
+        <option value="pending" {% if status_filter == "pending" %}selected{% endif %}>Pending</option>
+        <option value="running" {% if status_filter == "running" %}selected{% endif %}>Running</option>
+        <option value="done" {% if status_filter == "done" %}selected{% endif %}>Done</option>
+        <option value="failed" {% if status_filter == "failed" %}selected{% endif %}>Failed</option>
+        <option value="dead" {% if status_filter == "dead" %}selected{% endif %}>Dead</option>
+    </select>
+
+    <select name="job_type"
+            hx-get="/jobs"
+            hx-target="#jobs-table"
+            hx-include=".filters select, .filters input"
+            hx-push-url="true">
+        <option value="">All Types</option>
+        {% for t in job_types %}
+        <option value="{{ t }}" {% if type_filter == t %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+    </select>
+
+    <select name="queue"
+            hx-get="/jobs"
+            hx-target="#jobs-table"
+            hx-include=".filters select, .filters input"
+            hx-push-url="true">
+        <option value="">All Queues</option>
+        {% for q in queue_names %}
+        <option value="{{ q }}" {% if queue_filter == q %}selected{% endif %}>{{ q }}</option>
+        {% endfor %}
+    </select>
+
+    <span class="htmx-indicator">Loading...</span>
+</div>
+
+<!-- Jobs table (HTMX target for partial updates) -->
+<div id="jobs-table">
+    {% include "partials/jobs_table.html" %}
+</div>
+{% endblock %}

@@ -10,6 +10,7 @@ def enqueue_single_job(
     queue_name: str = "default_queue",
     max_attempts: int | None = None,
     scheduled_at: datetime.datetime | None = None,
+    tags: dict | None = None,
 ):
     """
     Enqueues a single job into the specified queue.
@@ -20,6 +21,7 @@ def enqueue_single_job(
         queue_name: The name of the queue to add the job to.
         max_attempts: The maximum number of times the job can be retried.
         scheduled_at: A datetime object specifying when the job should be executed.
+        tags: Optional key-value metadata for filtering and grouping (e.g. {"env": "prod", "team": "billing"}).
     """
     with get_session() as session:
         # Ensure the queue exists, create if not
@@ -41,11 +43,13 @@ def enqueue_single_job(
             job_kwargs["max_attempts"] = max_attempts
         if scheduled_at is not None:
             job_kwargs["scheduled_at"] = scheduled_at
+        if tags is not None:
+            job_kwargs["tags"] = tags
 
         job = Job(**job_kwargs)
         session.add(job)
         session.commit()
         session.refresh(job)
-        
+
         return job
 

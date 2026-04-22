@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% set active_page = "jobs" %}
+
+{% block title %}TaskForge - Job {{ job.id[:8] }}...{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Job Detail</h2>
+    <p class="mono">{{ job.id }}</p>
+</div>
+
+<div class="two-columns">
+    <!-- Job info -->
+    <div class="card">
+        <div class="card-header">
+            Job Information
+            {% if job.status.value == "dead" %}
+            <form method="post" action="/api/jobs/{{ job.id }}/replay" style="display: inline;">
+                <button type="button" class="btn btn-primary"
+                        hx-post="/api/jobs/{{ job.id }}/replay"
+                        hx-confirm="Re-enqueue this job as a new pending job?">
+                    Replay Job
+                </button>
+            </form>
+            {% endif %}
+        </div>
+        <div class="card-body">
+            <dl class="detail-grid">
+                <dt>Status</dt>
+                <dd><span class="badge badge-{{ job.status.value }}">{{ job.status.value }}</span></dd>
+
+                <dt>Type</dt>
+                <dd class="mono">{{ job.type }}</dd>
+
+                <dt>Queue</dt>
+                <dd>{{ queue_name }}</dd>
+
+                <dt>Attempts</dt>
+                <dd class="mono">{{ job.attempts }} / {{ job.max_attempts }}</dd>
+
+                <dt>Created</dt>
+                <dd>{{ job.created_at|format_datetime }}</dd>
+
+                {% if job.started_at %}
+                <dt>Started</dt>
+                <dd>{{ job.started_at|format_datetime }}</dd>
+                {% endif %}
+
+                {% if job.completed_at %}
+                <dt>Completed</dt>
+                <dd>{{ job.completed_at|format_datetime }}</dd>
+                {% endif %}
+
+                {% if duration is not none %}
+                <dt>Duration</dt>
+                <dd class="mono">{{ duration|format_duration }}</dd>
+                {% endif %}
+
+                {% if job.scheduled_at %}
+                <dt>Scheduled At</dt>
+                <dd>{{ job.scheduled_at|format_datetime }}</dd>
+                {% endif %}
+
+                {% if job.locked_by %}
+                <dt>Locked By</dt>
+                <dd class="mono">{{ job.locked_by[:8] }}...</dd>
+                {% endif %}
+
+                {% if job.tags %}
+                <dt>Tags</dt>
+                <dd>
+                    {% for k, v in job.tags.items() %}
+                    <span class="tag">{{ k }}={{ v }}</span>
+                    {% endfor %}
+                </dd>
+                {% endif %}
+
+                <dt>Last Updated</dt>
+                <dd>{{ job.updated_at|format_datetime }}</dd>
+            </dl>
+        </div>
+    </div>
+
+    <!-- Payload & Result -->
+    <div>
+        {% if job.payload %}
+        <div class="card">
+            <div class="card-header">Payload</div>
+            <div class="card-body">
+                <pre class="payload">{{ job.payload | tojson(indent=2) }}</pre>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if job.result %}
+        <div class="card">
+            <div class="card-header">Result</div>
+            <div class="card-body">
+                <pre class="payload">{{ job.result | tojson(indent=2) }}</pre>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if job.error_message %}
+        <div class="card">
+            <div class="card-header">Error Traceback</div>
+            <div class="card-body">
+                <pre class="error-trace">{{ job.error_message }}</pre>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div style="margin-top: 1rem;">
+    <a href="/jobs" class="btn">&larr; Back to Jobs</a>
+</div>
+{% endblock %}

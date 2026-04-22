@@ -1,0 +1,70 @@
+<div class="card">
+    <div class="card-body no-padding">
+        <table>
+            <thead>
+                <tr>
+                    <th>Job ID</th>
+                    <th>Type</th>
+                    <th>Queue</th>
+                    <th>Status</th>
+                    <th>Attempts</th>
+                    <th>Tags</th>
+                    <th>Created</th>
+                    <th>Duration</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in jobs %}
+                <tr>
+                    <td><a href="/jobs/{{ job.id }}" class="link mono">{{ job.id[:8] }}...</a></td>
+                    <td class="mono">{{ job.type }}</td>
+                    <td>{{ job.queue_name }}</td>
+                    <td><span class="badge badge-{{ job.status }}">{{ job.status }}</span></td>
+                    <td class="mono">{{ job.attempts }}/{{ job.max_attempts }}</td>
+                    <td>
+                        {% for k, v in job.tags.items() %}
+                        <span class="tag">{{ k }}={{ v }}</span>
+                        {% endfor %}
+                    </td>
+                    <td>{{ job.created_at|time_ago }}</td>
+                    <td class="mono">{{ job.duration|format_duration }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" style="color: var(--text-secondary); text-align: center;">No jobs found</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="pagination">
+    {% if page > 1 %}
+    <a href="/jobs?page={{ page - 1 }}&status={{ status_filter }}&job_type={{ type_filter }}&queue={{ queue_filter }}"
+       hx-get="/jobs?page={{ page - 1 }}&status={{ status_filter }}&job_type={{ type_filter }}&queue={{ queue_filter }}"
+       hx-target="#jobs-table"
+       hx-push-url="true">&laquo; Prev</a>
+    {% endif %}
+
+    {% for p in range(1, total_pages + 1) %}
+        {% if p == page %}
+            <span class="current">{{ p }}</span>
+        {% elif p <= 3 or p > total_pages - 3 or (p >= page - 1 and p <= page + 1) %}
+            <a href="/jobs?page={{ p }}&status={{ status_filter }}&job_type={{ type_filter }}&queue={{ queue_filter }}"
+               hx-get="/jobs?page={{ p }}&status={{ status_filter }}&job_type={{ type_filter }}&queue={{ queue_filter }}"
+               hx-target="#jobs-table"
+               hx-push-url="true">{{ p }}</a>
+        {% elif p == 4 or p == total_pages - 3 %}
+            <span style="color: var(--text-secondary);">...</span>
+        {% endif %}
+    {% endfor %}
+
+    {% if page < total_pages %}
+    <a href="/jobs?page={{ page + 1 }}&status={{ status_filter }}&job_type={{ type_filter }}&queue={{ queue_filter }}"
+       hx-get="/jobs?page={{ page + 1 }}&status={{ status_filter }}&job_type={{ type_filter }}&queue={{ queue_filter }}"
+       hx-target="#jobs-table"
+       hx-push-url="true">Next &raquo;</a>
+    {% endif %}
+</div>
+{% endif %}

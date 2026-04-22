@@ -12,14 +12,15 @@ import my_sample_jobs  # This import runs the @register decorators
 
 if __name__ == "__main__":
     print("--- Enqueueing Jobs ---")
-    enqueue_single_job("greet_user", {"name": "Alice"})
-    enqueue_single_job("add_numbers", {"a": 10, "b": 20})
+    enqueue_single_job("greet_user", {"name": "Alice"}, tags={"env": "demo", "team": "onboarding"})
+    enqueue_single_job("add_numbers", {"a": 10, "b": 20}, tags={"env": "demo"})
     enqueue_single_job(
-        "fail_example", {"message": "This will be retried"}, max_attempts=5
-    )  # Override default
-    enqueue_single_job("add_numbers", [5, 7])
+        "fail_example", {"message": "This will be retried"}, max_attempts=5,
+        tags={"env": "demo", "priority": "low"},
+    )
+    enqueue_single_job("add_numbers", [5, 7], tags={"env": "demo"})
     enqueue_single_job(
-        "fail_example", {"message": "This will only try once"}, max_attempts=1
-    )  # Override default
+        "fail_example", {"message": "This will only try once"}, max_attempts=1,
+        tags={"env": "demo", "priority": "high"},
+    )
     print("--- Jobs Enqueued ---")
-

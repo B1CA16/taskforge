@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% set active_page = "overview" %}
+
+{% block title %}TaskForge - Overview{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Dashboard Overview</h2>
+    <p>Real-time system status <span class="refresh-indicator" hx-get="/" hx-trigger="every 5s" hx-target="body" hx-select=".main" hx-swap="innerHTML" hx-select-oob="true">&bull; auto-refreshing every 5s</span></p>
+</div>
+
+<!-- Summary stats -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="label">Total Jobs</div>
+        <div class="value blue">{{ total_jobs }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Pending</div>
+        <div class="value yellow">{{ total_pending }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Running</div>
+        <div class="value blue">{{ total_running }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Completed</div>
+        <div class="value green">{{ total_done }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Dead</div>
+        <div class="value red">{{ total_dead }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Workers Online</div>
+        <div class="value green">{{ total_workers_online }}</div>
+    </div>
+</div>
+
+<div class="two-columns">
+    <!-- Queue breakdown -->
+    <div class="card">
+        <div class="card-header">Queues</div>
+        <div class="card-body no-padding">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Queue</th>
+                        <th>Pending</th>
+                        <th>Running</th>
+                        <th>Done</th>
+                        <th>Dead</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for q in queues %}
+                    <tr>
+                        <td><strong>{{ q.name }}</strong></td>
+                        <td><span class="badge badge-pending">{{ q.pending }}</span></td>
+                        <td><span class="badge badge-running">{{ q.running }}</span></td>
+                        <td><span class="badge badge-done">{{ q.done }}</span></td>
+                        <td><span class="badge badge-dead">{{ q.dead }}</span></td>
+                        <td class="mono">{{ q.total }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" style="color: var(--text-secondary); text-align: center;">No queues found</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Workers -->
+    <div class="card">
+        <div class="card-header">Workers</div>
+        <div class="card-body no-padding">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Worker ID</th>
+                        <th>Host</th>
+                        <th>Status</th>
+                        <th>Queues</th>
+                        <th>Last Heartbeat</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for w in workers %}
+                    <tr>
+                        <td class="mono">{{ w.id[:8] }}...</td>
+                        <td>{{ w.hostname }}</td>
+                        <td><span class="badge badge-{{ w.status }}">{{ w.status }}</span></td>
+                        <td>
+                            {% for q in w.queues %}
+                            <span class="tag">{{ q }}</span>
+                            {% endfor %}
+                        </td>
+                        <td>{{ w.last_heartbeat_at|time_ago }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" style="color: var(--text-secondary); text-align: center;">No workers registered</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Recent failures -->
+<div class="card">
+    <div class="card-header">Recent Failures</div>
+    <div class="card-body no-padding">
+        <table>
+            <thead>
+                <tr>
+                    <th>Job ID</th>
+                    <th>Type</th>
+                    <th>Queue</th>
+                    <th>Status</th>
+                    <th>Error</th>
+                    <th>When</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in recent_failures %}
+                <tr>
+                    <td><a href="/jobs/{{ f.id }}" class="link mono">{{ f.id[:8] }}...</a></td>
+                    <td class="mono">{{ f.type }}</td>
+                    <td>{{ f.queue_name }}</td>
+                    <td><span class="badge badge-{{ f.status }}">{{ f.status }}</span></td>
+                    <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ f.error_message }}</td>
+                    <td>{{ f.updated_at|time_ago }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" style="color: var(--text-secondary); text-align: center;">No failures - looking good!</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
