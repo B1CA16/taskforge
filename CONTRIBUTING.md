@@ -32,13 +32,23 @@ pytest
 > [!WARNING]
 > The test suite drops all tables. It refuses to run unless the database name contains `test`, and by default it uses the disposable database from `docker compose` (port 5436).
 
-Before pushing, run:
+Install the Git hooks once, so formatting and lint run on every commit:
+
+```bash
+pre-commit install
+```
+
+CI runs these checks on every push. To run them yourself:
 
 ```bash
 ruff format .
 ruff check .
+npx markdownlint-cli2 "**/*.md"
+python scripts/check_links.py
 pytest
 ```
+
+CI also runs the tests on Python 3.10 to 3.14, Postgres 14 and 18, and Windows, and it checks that the built wheel installs and works (`scripts/check_wheel.py`).
 
 ## Workflow
 

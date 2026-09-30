@@ -2,6 +2,9 @@
 
 **Background jobs for Python, stored in your Postgres database. No Redis, no broker.**
 
+[![CI](https://github.com/B1CA16/taskforge/actions/workflows/ci.yml/badge.svg)](https://github.com/B1CA16/taskforge/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/taskforge-queue?include_prereleases)](https://pypi.org/project/taskforge-queue/)
+[![Python versions](https://img.shields.io/pypi/pyversions/taskforge-queue)](https://pypi.org/project/taskforge-queue/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 > **Status: alpha (0.2.0.dev).** The API will change before 1.0. Pre-releases are on PyPI as
@@ -28,7 +31,7 @@ Not implemented yet: reclaiming jobs from crashed workers, concurrency within a 
 ## Requirements
 
 - Python 3.10+
-- PostgreSQL 13+. SQLite works for the dashboard and CLI but **not** for workers, which need `SKIP LOCKED`.
+- PostgreSQL 14+ (tested on 14 and 18). SQLite works for the dashboard and CLI but **not** for workers, which need `SKIP LOCKED`.
 
 ## Installation
 

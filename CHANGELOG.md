@@ -46,6 +46,13 @@ Stabilization release (milestone M0 in [docs/revamp/03-priorities.md](docs/revam
 - The executor mutated the stored job payload.
 - SQLite didn't enforce foreign keys.
 
+### Build and CI
+
+- GitHub Actions CI on every push: Ruff, markdownlint and a link check; tests on Python 3.10–3.14 against Postgres 14 and 18 (in a non-UTC timezone) and on Windows; and a build job that installs the wheel in a clean environment and smoke-tests it.
+- Pull request titles are checked against Conventional Commits. Dependabot keeps dependencies and actions up to date.
+- pre-commit hooks (`pre-commit install`) run the same checks locally. Ruff is pinned to the 0.16 series.
+- The minimum supported PostgreSQL is now 14 (13 reached end of life in November 2025).
+
 ### Docs
 
 - Applied the conventions to the existing code and docs: docstrings on the whole public API, comments that explain why, US spelling, sentence-case headings, and lint-clean Markdown. Docs were renamed to kebab-case: `ROADMAP.md` → `docs/roadmap.md`, `TESTING_STRATEGY.md` → `docs/contributing/testing.md`, `docs/DOCKER_PG_SETUP.md` → `docs/docker-postgres-setup.md`, and `docs/revamp/*` to lowercase. Update any bookmarks.

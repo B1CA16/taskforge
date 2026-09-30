@@ -44,8 +44,8 @@ Goal: `pip install taskforge-queue` works for a stranger, CI guards every change
 | 1.3 | **Transactional enqueue** (`_session=`). It's the headline feature, so do it early. | 3.2 | S |
 | 1.4 | **Alembic migrations** shipped in the package, plus `taskforge db upgrade`. Schema v2 (at least: prefixed tables, `timestamptz`, `run_at`, `priority`, `heartbeat_at`, `last_error` jsonb). | 4 | M |
 | 1.5 | **CLI v1** on Typer + Rich: `worker`, `db`, `jobs`, `dead`, `queues`, `workers`, `stats`, `dashboard`. Extract the `admin.py` service layer shared with the dashboard and API (H7). | 6 | M |
-| 1.6 | **Tooling**: ruff (lint + format), mypy, pre-commit, Conventional Commit PR-title check. | 10 | S |
-| 1.7 | **CI**: `ci.yml` (lint, test matrix with a Postgres service, build + install-from-wheel smoke test), Codecov, Dependabot. | 11 | M |
+| 1.6 | 🟡 **Tooling**: ✅ Ruff (lint + format), pre-commit, Conventional Commit PR-title check. ⬜ mypy. | 10 | S |
+| 1.7 | 🟡 **CI**: ✅ `ci.yml` (lint, Markdown and link checks, tests on Python 3.10–3.14 × Postgres 14/18 plus Windows, build + install-from-wheel smoke test), Dependabot. ⬜ Codecov. | 11 | M |
 | 1.8 | **Release pipeline**: release-please + `release.yml` with PyPI Trusted Publishing (TestPyPI first). | 11 | S |
 | 1.9 | **README rewrite** per spec §13, plus `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue/PR templates. | 13, 15 | M |
 | 1.10 | **Docstrings & comments pass** on the public API (Google style) and on the tricky parts (claim query, state transitions): _why_, not _what_. | 10 | M |

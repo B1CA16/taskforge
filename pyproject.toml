@@ -40,7 +40,8 @@ dependencies = [
 dev = [
   "pytest>=7.0",
   "httpx>=0.27",
-  "ruff>=0.6",
+  "ruff>=0.16,<0.17",  # formatter output can change between minor versions
+  "pre-commit>=3.5",
 ]
 
 [project.urls]
@@ -97,6 +98,7 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
 "tests/**" = ["D", "T20"]
 "demo_client/**" = ["D", "T20"]
 "src/taskforge/cli/**" = ["T20"]
+"scripts/**" = ["T20"]
 
 [tool.ruff.format]
 docstring-code-format = true
