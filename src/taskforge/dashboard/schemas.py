@@ -1,10 +1,14 @@
+"""Response models for the dashboard's JSON API."""
+
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel
-from datetime import datetime
 
 
 class QueueStats(BaseModel):
+    """Job counts for one queue, by status."""
+
     name: str
     pending: int = 0
     running: int = 0
@@ -15,6 +19,8 @@ class QueueStats(BaseModel):
 
 
 class JobSummary(BaseModel):
+    """A job as shown in lists: identity, status and timing, without payload or result."""
+
     id: str
     type: str
     status: str
@@ -31,8 +37,10 @@ class JobSummary(BaseModel):
 
 
 class JobDetail(JobSummary):
+    """Everything about one job, including its payload, result and last error."""
+
     payload: dict | list | None = None
-    result: Any = None  # whatever the job returned: any JSON value
+    result: Any = None  # any JSON value the handler returned, not only dicts and lists
     error_message: str | None = None
     locked_by: str | None = None
     locked_at: datetime | None = None
@@ -41,6 +49,12 @@ class JobDetail(JobSummary):
 
 
 class WorkerSummary(BaseModel):
+    """A registered worker.
+
+    `status` is `lost` when the worker says it's online but hasn't sent a heartbeat
+    for over 60 seconds.
+    """
+
     id: str
     hostname: str
     pid: int
@@ -55,6 +69,8 @@ class WorkerSummary(BaseModel):
 
 
 class OverviewStats(BaseModel):
+    """Totals for the dashboard's overview page."""
+
     total_jobs: int
     total_pending: int
     total_running: int

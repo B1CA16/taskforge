@@ -1,4 +1,10 @@
-from prometheus_client import Counter, Histogram, Gauge, Info
+"""Prometheus metric objects, shared by every worker in a process.
+
+Metric names are prefixed `taskforge_`. Labels are kept low-cardinality (queue, job
+type, status), never per-job or per-worker ids.
+"""
+
+from prometheus_client import Counter, Gauge, Histogram, Info
 
 # --- Counters ---
 
@@ -20,6 +26,7 @@ job_execution_duration_seconds = Histogram(
     "taskforge_job_execution_duration_seconds",
     "Time spent executing a job",
     ["queue", "job_type"],
+    # From 10 ms to 5 min: background jobs range from quick API calls to reports.
     buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0),
 )
 

@@ -1,3 +1,5 @@
+"""SQLAlchemy models: queues, jobs and workers."""
+
 import enum
 import uuid
 
@@ -25,7 +27,7 @@ Base = declarative_base()
 class UTCDateTime(TypeDecorator):
     """A timestamp that is always stored and returned as aware UTC.
 
-    On Postgres this is ``timestamptz``, so comparisons with ``NOW()`` are
+    On Postgres this is `timestamptz`, so comparisons with `NOW()` are
     correct whatever the server's timezone. On SQLite (no timezone support) the
     value is stored as naive UTC and re-tagged as UTC when loaded.
     """
@@ -34,21 +36,25 @@ class UTCDateTime(TypeDecorator):
     cache_ok = True
 
     def process_bind_param(self, value, dialect):
+        """Convert to UTC before writing; drop the offset on SQLite."""
         value = ensure_utc(value)
         if value is not None and dialect.name == "sqlite":
             value = value.replace(tzinfo=None)
         return value
 
     def process_result_value(self, value, dialect):
+        """Return values read from the database as aware UTC."""
         return ensure_utc(value)
 
 
 def _default_max_attempts() -> int:
-    # Read at insert time (not import time) so env/config changes are honoured.
+    # Read at insert time (not import time) so env/config changes are honored.
     return settings.DEFAULT_MAX_ATTEMPTS
 
 
 class Queue(Base):
+    """A named queue. Created automatically the first time a job is enqueued to it."""
+
     __tablename__ = "queues"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -58,20 +64,44 @@ class Queue(Base):
 
 
 class JobStatus(enum.Enum):
+    """Where a job is in its lifecycle.
+
+    `pending` → `running` → `done`, or on failure `running` → `failed` (waiting for a
+    retry) → `running` … → `dead` once `max_attempts` is used up.
+    """
+
     pending = "pending"  # waiting for its first run
     running = "running"  # claimed by a worker
     done = "done"  # finished successfully
     failed = "failed"  # last attempt failed; waiting for a retry at `scheduled_at`
-    dead = "dead"  # out of attempts (or cancelled); needs manual action
+    dead = "dead"  # out of attempts; needs manual action (inspect, then replay)
 
 
 class WorkerStatus(enum.Enum):
+    """A worker's registration state.
+
+    Workers set `online` when they start and `offline` when they stop cleanly. A
+    worker that dies without stopping stays `online` in the database; readers report
+    it as `lost` once its heartbeat is over 60 seconds old.
+    """
+
     online = "online"
     offline = "offline"
     lost = "lost"
 
 
 class WorkerRecord(Base):
+    """A worker process, as registered in the `workers` table.
+
+    Attributes:
+        id: The worker's `worker_id` (a UUID), also stored in `Job.locked_by`.
+        hostname: Machine the worker runs on.
+        pid: Process id on that machine.
+        queues: Queue names the worker consumes from.
+        last_heartbeat_at: Updated every 15 seconds while the worker runs.
+        stopped_at: When the worker stopped cleanly; `None` while running or if it died.
+    """
+
     __tablename__ = "workers"
 
     id = Column(String, primary_key=True)
@@ -85,6 +115,23 @@ class WorkerRecord(Base):
 
 
 class Job(Base):
+    """One unit of background work.
+
+    Attributes:
+        type: The job type, which selects the handler registered with `@register`.
+        payload: Handler arguments: a dict (keyword arguments) or a list (positional).
+        tags: Free-form key/value metadata for filtering and grouping.
+        status: The lifecycle state (see `JobStatus`).
+        scheduled_at: Don't run before this time. Also set when a retry is scheduled.
+        started_at: When the latest attempt started.
+        completed_at: When the job reached `done` or `dead`.
+        attempts: Failed attempts so far.
+        max_attempts: Attempts allowed, including the first run.
+        locked_by: `worker_id` of the worker that claimed the job most recently.
+        result: The handler's return value (any JSON value), once `done`.
+        error_message: Traceback of the latest failed attempt.
+    """
+
     __tablename__ = "jobs"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))

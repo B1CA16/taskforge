@@ -1,3 +1,5 @@
+"""Session context manager used throughout TaskForge."""
+
 from collections.abc import Iterator
 from contextlib import contextmanager
 
@@ -22,7 +24,7 @@ def get_session() -> Iterator[Session]:
 
 
 def __getattr__(name: str):
-    # Backwards compatibility for ``from taskforge.db.connection import engine``.
+    # Backwards compatibility for `from taskforge.db.connection import engine`.
     if name == "engine":
         return get_engine()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

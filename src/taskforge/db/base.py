@@ -1,7 +1,7 @@
 """Engine and session factory, created lazily on first use.
 
-Nothing here touches the database, the environment or ``.env`` at import time,
-so ``import taskforge`` is always safe (docs builds, ``--help``, tests...).
+Nothing here touches the database, the environment or `.env` at import time,
+so `import taskforge` is always safe (docs builds, `--help`, tests...).
 """
 
 from __future__ import annotations
@@ -21,8 +21,8 @@ _session_factory: sessionmaker[Session] | None = None
 def get_database_url() -> str:
     """Return the configured database URL.
 
-    Reads ``TASKFORGE_DATABASE_URL`` first, then ``DATABASE_URL``. If neither is
-    set, a ``.env`` file in the working directory is loaded (without overriding
+    Reads `TASKFORGE_DATABASE_URL` first, then `DATABASE_URL`. If neither is
+    set, a `.env` file in the working directory is loaded (without overriding
     existing variables) and the lookup is retried.
 
     Raises:
@@ -90,7 +90,7 @@ def reset_engine() -> None:
 
 
 def __getattr__(name: str):
-    # Backwards compatibility: ``from taskforge.db.base import engine, SessionLocal``
+    # Backwards compatibility: `from taskforge.db.base import engine, SessionLocal`
     # still works, but now resolves lazily instead of at import time.
     if name == "engine":
         return get_engine()

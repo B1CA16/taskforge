@@ -1,13 +1,16 @@
-import pytest
 import threading
 import time
 from collections import Counter
+
+import pytest
+
+from taskforge.jobs.registry import _job_registry, register
+from taskforge.task_queue.models import Job, JobStatus, Queue
 from taskforge.worker.worker import Worker
-from taskforge.jobs.registry import register, _job_registry
-from taskforge.task_queue.models import Job, Queue, JobStatus
 
 # A shared, thread-safe list to record which jobs get processed
 processed_jobs = Counter()
+
 
 # A simple job that appends its ID to the shared list
 @register("concurrent_job")
@@ -15,6 +18,7 @@ def concurrent_job(job_id):
     global processed_jobs
     processed_jobs[job_id] += 1
     time.sleep(0.1)  # Simulate some work
+
 
 @pytest.fixture(autouse=True)
 def clear_registry_and_counter():
@@ -44,7 +48,7 @@ def test_concurrent_workers_process_jobs_once(db_session):
             type="concurrent_job",
             payload={"job_id": i},
             queue_id=queue.id,
-            status=JobStatus.pending
+            status=JobStatus.pending,
         )
         db_session.add(job)
         job_ids.append(i)
@@ -71,7 +75,9 @@ def test_concurrent_workers_process_jobs_once(db_session):
     # Assert: Check that each job was processed exactly once
     assert len(processed_jobs) == len(job_ids)
     for job_id in job_ids:
-        assert processed_jobs[job_id] == 1, f"Job {job_id} was processed {processed_jobs[job_id]} times!"
+        assert processed_jobs[job_id] == 1, (
+            f"Job {job_id} was processed {processed_jobs[job_id]} times!"
+        )
 
     # Additionally, verify that all jobs in the DB are 'done'
     db_session.expire_all()

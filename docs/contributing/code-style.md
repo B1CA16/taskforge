@@ -68,6 +68,7 @@ We use **Google style**. The docs site renders docstrings as Markdown (mkdocstri
 | Private (`_name`) function or method | Only if the name and signature don't make it obvious. One line is usually enough. |
 | Tests | Optional; the test name should say it all. Add one when the _why_ isn't obvious. |
 | `__init__` | None. Document constructor arguments in the class docstring. |
+| FastAPI route handler | Summary plus a description of behavior and error status codes, but **no `Args`/`Returns` sections**: FastAPI shows the docstring in `/docs`, where those sections render as raw text. Describe parameters with `Query(description=...)`. |
 
 ### Writing rules
 

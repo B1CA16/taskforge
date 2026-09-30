@@ -12,7 +12,7 @@ REPLAYED_FROM_TAG = "taskforge.replayed_from"
 
 
 class AdminError(Exception):
-    """An administrative action was rejected (see ``code`` for the reason)."""
+    """An administrative action was rejected (see `code` for the reason)."""
 
     def __init__(self, code: str, message: str):
         super().__init__(message)
@@ -21,6 +21,14 @@ class AdminError(Exception):
 
 @dataclass
 class ReplayResult:
+    """The outcome of `replay_dead_job()`.
+
+    Attributes:
+        original: The dead job that was replayed. It stays `dead`.
+        new_job: The new pending job.
+        queue_name: The queue both jobs belong to.
+    """
+
     original: Job
     new_job: Job
     queue_name: str
@@ -29,12 +37,12 @@ class ReplayResult:
 def replay_dead_job(job_id: str, *, force: bool = False) -> ReplayResult:
     """Re-enqueue a dead job as a new pending job.
 
-    The original job stays ``dead`` (for the audit trail) and is tagged with
-    the id of its replacement. Replaying it again is refused unless ``force``
+    The original job stays `dead` (for the audit trail) and is tagged with
+    the id of its replacement. Replaying it again is refused unless `force`
     is set, to avoid running the same work twice by accident.
 
     Raises:
-        AdminError: ``not_found``, ``not_dead`` or ``already_replayed``.
+        AdminError: `not_found`, `not_dead` or `already_replayed`.
     """
     with get_session() as session:
         job = session.get(Job, job_id)

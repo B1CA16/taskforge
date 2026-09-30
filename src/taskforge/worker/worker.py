@@ -1,3 +1,12 @@
+"""The worker: claims jobs from the queue and executes them.
+
+A worker polls its queues, claims one job at a time with
+`SELECT ... FOR UPDATE SKIP LOCKED`, runs it, and records the outcome. It also
+registers itself in the `workers` table, sends heartbeats, and exports Prometheus
+metrics.
+"""
+
+import contextlib
 import datetime
 import json
 import logging
@@ -56,11 +65,11 @@ class Worker:
     """Polls one or more queues and executes jobs one at a time.
 
     Args:
-        queues: Queue names to consume from. Defaults to ``["default_queue"]``.
+        queues: Queue names to consume from. Defaults to `["default_queue"]`.
         max_concurrency: Reserved for concurrent execution (not used yet; jobs
             run one at a time).
         metrics_port: Port for the Prometheus exporter. Defaults to
-            ``TASKFORGE_METRICS_PORT`` or 9464.
+            `TASKFORGE_METRICS_PORT` or 9464.
         enable_metrics: Start the Prometheus exporter and queue-depth refresher.
         poll_interval: Seconds to wait before polling again when no job is ready.
         handle_signals: Install SIGINT/SIGTERM (and SIGBREAK on Windows) handlers
@@ -89,7 +98,7 @@ class Worker:
         self._handle_signals = handle_signals
         self._previous_signal_handlers = {}
 
-    # --- lifecycle -----------------------------------------------------------
+    # --- Lifecycle ---
 
     def run(self):
         """Run until :meth:`stop` is called or a termination signal arrives.
@@ -103,12 +112,14 @@ class Worker:
         self._register()
 
         try:
-            worker_info.info({
-                "worker_id": self.worker_id,
-                "hostname": platform.node(),
-                "pid": str(os.getpid()),
-                "queues": ",".join(self.queues),
-            })
+            worker_info.info(
+                {
+                    "worker_id": self.worker_id,
+                    "hostname": platform.node(),
+                    "pid": str(os.getpid()),
+                    "queues": ",".join(self.queues),
+                }
+            )
             for queue_name in self.queues:
                 active_workers.labels(queue=queue_name).inc()
 
@@ -119,10 +130,15 @@ class Worker:
             self._heartbeat_thread.start()
 
             if self._enable_metrics:
-                self._metrics_thread = threading.Thread(target=self._metrics_refresh_loop, daemon=True)
+                self._metrics_thread = threading.Thread(
+                    target=self._metrics_refresh_loop, daemon=True
+                )
                 self._metrics_thread.start()
 
-            logger.info(f"Worker started, polling queues: {self.queues}", extra={"worker_id": self.worker_id})
+            logger.info(
+                f"Worker started, polling queues: {self.queues}",
+                extra={"worker_id": self.worker_id},
+            )
             while not self._stop_event.is_set():
                 processed = self._process_job()
                 if not processed:
@@ -147,22 +163,22 @@ class Worker:
             signum = getattr(signal, name, None)
             if signum is None:
                 continue
-            try:
+            # Not every signal can be handled on every platform; skip the ones that can't.
+            with contextlib.suppress(OSError, ValueError):
                 self._previous_signal_handlers[signum] = signal.signal(signum, self._on_signal)
-            except (OSError, ValueError):
-                pass
 
     def _restore_signal_handlers(self):
         for signum, handler in self._previous_signal_handlers.items():
-            try:
+            with contextlib.suppress(OSError, ValueError):
                 signal.signal(signum, handler)
-            except (OSError, ValueError):
-                pass
         self._previous_signal_handlers.clear()
 
     def _on_signal(self, signum, _frame):
         if self._stop_event.is_set():
-            logger.warning("Second stop signal received, exiting immediately.", extra={"worker_id": self.worker_id})
+            logger.warning(
+                "Second stop signal received, exiting immediately.",
+                extra={"worker_id": self.worker_id},
+            )
             raise KeyboardInterrupt
         logger.info(
             f"Received {signal.Signals(signum).name}, finishing current job before exiting "
@@ -171,7 +187,7 @@ class Worker:
         )
         self.stop()
 
-    # --- registration, heartbeats, metrics -----------------------------------
+    # --- Registration, heartbeats and metrics ---
 
     def _register(self):
         """Register this worker in the database."""
@@ -244,7 +260,7 @@ class Worker:
         for queue_name, status, count in rows:
             queue_depth.labels(queue=queue_name, status=status.value).set(count)
 
-    # --- job processing ------------------------------------------------------
+    # --- Job processing ---
 
     def _process_job(self) -> bool:
         """Claim and run at most one job.
@@ -269,7 +285,11 @@ class Worker:
                 return job_id
             except Exception as e:
                 session.rollback()
-                logger.error(f"Failed to claim a job: {e}", exc_info=True, extra={"worker_id": self.worker_id})
+                logger.error(
+                    f"Failed to claim a job: {e}",
+                    exc_info=True,
+                    extra={"worker_id": self.worker_id},
+                )
                 return None
 
     def _execute_and_record(self, job_id: str) -> None:
@@ -280,14 +300,17 @@ class Worker:
                     return
                 queue_name = job.queue.name if job.queue else "unknown"
                 job_logger = logging.LoggerAdapter(
-                    logger, {"job_id": str(job.id), "worker_id": self.worker_id, "job_type": job.type}
+                    logger,
+                    {"job_id": str(job.id), "worker_id": self.worker_id, "job_type": job.type},
                 )
                 job_logger.info("Claimed job")
 
                 start_time = time.monotonic()
                 job_result, error = execute_job(job, logger=job_logger)
                 duration = time.monotonic() - start_time
-                job_execution_duration_seconds.labels(queue=queue_name, job_type=job.type).observe(duration)
+                job_execution_duration_seconds.labels(queue=queue_name, job_type=job.type).observe(
+                    duration
+                )
 
                 if error is None:
                     error = _json_serialization_error(job_result)
@@ -304,16 +327,18 @@ class Worker:
                 self._record_crash(job_id, traceback.format_exc())
 
     def _apply_outcome(self, job, job_result, error, queue_name, job_logger) -> None:
-        """Set status/result/retry fields on ``job`` (the caller commits)."""
+        """Set status/result/retry fields on `job` (the caller commits)."""
         now = utcnow()
         if error:
             job.attempts += 1
             job.error_message = error
             if job.attempts < job.max_attempts:
                 job.status = JobStatus.failed
-                backoff_seconds = 10 * (2 ** job.attempts)
+                backoff_seconds = 10 * (2**job.attempts)
                 job.scheduled_at = now + datetime.timedelta(seconds=backoff_seconds)
-                jobs_processed_total.labels(queue=queue_name, job_type=job.type, status="retried").inc()
+                jobs_processed_total.labels(
+                    queue=queue_name, job_type=job.type, status="retried"
+                ).inc()
                 job_logger.warning(
                     f"Job failed, will retry in {backoff_seconds} seconds. "
                     f"Attempt {job.attempts} of {job.max_attempts}."
@@ -321,7 +346,9 @@ class Worker:
             else:
                 job.status = JobStatus.dead
                 job.completed_at = now
-                jobs_processed_total.labels(queue=queue_name, job_type=job.type, status="dead").inc()
+                jobs_processed_total.labels(
+                    queue=queue_name, job_type=job.type, status="dead"
+                ).inc()
                 job_logger.error(
                     f"Job failed after {job.attempts} attempts and was moved to dead-letter queue."
                 )
@@ -334,23 +361,32 @@ class Worker:
         job.updated_at = now
 
     def _record_crash(self, job_id: str, error: str) -> None:
-        """Best effort: count a failed attempt so the job doesn't stay ``running``.
+        """Best effort: count a failed attempt so the job doesn't stay `running`.
 
         Runs in a fresh session because the original one is unusable. If this
-        also fails (e.g. the database is down) the job stays ``running`` until
+        also fails (e.g. the database is down) the job stays `running` until
         stale-job reclamation (planned) picks it up.
         """
         try:
             with get_session() as session:
                 job = session.get(Job, job_id)
-                if job is None or job.status != JobStatus.running or job.locked_by != self.worker_id:
+                if (
+                    job is None
+                    or job.status != JobStatus.running
+                    or job.locked_by != self.worker_id
+                ):
                     return
                 queue_name = job.queue.name if job.queue else "unknown"
                 job_logger = logging.LoggerAdapter(
-                    logger, {"job_id": str(job.id), "worker_id": self.worker_id, "job_type": job.type}
+                    logger,
+                    {"job_id": str(job.id), "worker_id": self.worker_id, "job_type": job.type},
                 )
                 self._apply_outcome(
-                    job, None, f"Worker failed to record the job outcome:\n{error}", queue_name, job_logger
+                    job,
+                    None,
+                    f"Worker failed to record the job outcome:\n{error}",
+                    queue_name,
+                    job_logger,
                 )
                 session.commit()
         except Exception:
@@ -362,7 +398,7 @@ class Worker:
 
 
 def _json_serialization_error(value) -> str | None:
-    """Return an error message if ``value`` can't be stored in a JSON column."""
+    """Return an error message if `value` can't be stored in a JSON column."""
     try:
         json.dumps(value)
     except (TypeError, ValueError) as exc:

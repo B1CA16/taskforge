@@ -1,4 +1,4 @@
-# Docker PostgreSQL Setup for TaskForge (Windows)
+# Docker PostgreSQL setup for TaskForge (Windows)
 
 ## Overview
 
@@ -38,8 +38,8 @@ Check that Postgres is running:
 docker exec -it taskforge-postgres psql -U postgres
 ```
 
--   Password: `postgres`
--   If you can connect, the container works correctly.
+- Password: `postgres`
+- If you can connect, the container works correctly.
 
 ---
 
@@ -47,7 +47,7 @@ docker exec -it taskforge-postgres psql -U postgres
 
 Create a `.env` file in the root of your project:
 
-```
+```dotenv
 TASKFORGE_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5435/postgres
 
 ```
@@ -64,8 +64,8 @@ From the root of your project, with the virtual environment active (`pip install
 python -m taskforge.cli.main init-db
 ```
 
--   This creates any missing TaskForge tables. It never drops or alters existing ones.
--   No authentication or timeout errors should occur.
+- This creates any missing TaskForge tables. It never drops or alters existing ones.
+- No authentication or timeout errors should occur.
 
 > **Running the test suite?** Don't use this database: the tests drop all tables.
 > Use the disposable one instead: `docker compose up -d test-db` (port 5436).

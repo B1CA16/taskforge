@@ -1,5 +1,5 @@
-import pytest
 import datetime
+
 from taskforge.task_queue.models import WorkerRecord, WorkerStatus
 
 
@@ -62,16 +62,12 @@ def test_worker_heartbeat_update(db_session):
 
     initial_heartbeat = worker.last_heartbeat_at
 
-    # Simulate heartbeat update
-    new_heartbeat = datetime.datetime.now(datetime.timezone.utc)
+    new_heartbeat = initial_heartbeat + datetime.timedelta(seconds=15)
     worker.last_heartbeat_at = new_heartbeat
     db_session.commit()
-    db_session.refresh(worker)
+    db_session.expire_all()
 
-    # SQLite strips timezone info, so compare without tzinfo
-    actual = worker.last_heartbeat_at.replace(tzinfo=None)
-    expected = new_heartbeat.replace(tzinfo=None)
-    assert actual == expected
+    assert db_session.get(WorkerRecord, worker.id).last_heartbeat_at == new_heartbeat
 
 
 def test_worker_status_enum_values(db_session):
@@ -89,6 +85,7 @@ def test_worker_status_enum_values(db_session):
     db_session.commit()
 
     from sqlalchemy import select
+
     all_workers = db_session.execute(select(WorkerRecord)).scalars().all()
     statuses = {w.status for w in all_workers}
     assert statuses == {WorkerStatus.online, WorkerStatus.offline, WorkerStatus.lost}

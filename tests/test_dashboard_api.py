@@ -1,10 +1,12 @@
-import pytest
 import datetime
+
+import pytest
 from fastapi.testclient import TestClient
+
 from taskforge.dashboard.app import app
 from taskforge.dashboard.dependencies import get_db
-from taskforge.task_queue.models import Job, JobStatus, Queue, WorkerRecord, WorkerStatus
 from taskforge.db.connection import get_session
+from taskforge.task_queue.models import Job, JobStatus, Queue, WorkerRecord, WorkerStatus
 
 
 @pytest.fixture(scope="function")
@@ -31,8 +33,14 @@ def seeded_db(client):
         jobs = [
             Job(type="task_a", queue_id=queue.id, status=JobStatus.pending, tags={"env": "prod"}),
             Job(type="task_a", queue_id=queue.id, status=JobStatus.done, tags={"env": "staging"}),
-            Job(type="task_b", queue_id=queue.id, status=JobStatus.dead, error_message="Test error",
-                attempts=3, max_attempts=3),
+            Job(
+                type="task_b",
+                queue_id=queue.id,
+                status=JobStatus.dead,
+                error_message="Test error",
+                attempts=3,
+                max_attempts=3,
+            ),
         ]
         session.add_all(jobs)
 

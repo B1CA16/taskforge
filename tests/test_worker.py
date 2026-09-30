@@ -1,11 +1,12 @@
-import pytest
-from unittest.mock import Mock
 import datetime
-import time
-from taskforge.jobs.registry import register, get_job_func, _job_registry
+from unittest.mock import Mock
+
+import pytest
+
+from taskforge.jobs.registry import _job_registry, get_job_func, register
+from taskforge.task_queue.models import Job, JobStatus, Queue
 from taskforge.worker.executor import execute_job
 from taskforge.worker.worker import Worker
-from taskforge.task_queue.models import Job, JobStatus, Queue
 
 
 # Sample functions to be used as jobs
@@ -16,7 +17,7 @@ def success_job(x, y):
 # New sample job function that accepts a logger
 def success_job_with_logger(x, y, logger=None):
     if logger:
-        logger.info(f"Adding {x} and {y} with logger. Result: {x+y}")
+        logger.info(f"Adding {x} and {y} with logger. Result: {x + y}")
     return x + y
 
 
@@ -48,9 +49,7 @@ def test_get_job_func():
 
 
 def test_get_unregistered_job_func():
-    with pytest.raises(
-        ValueError, match="No job function registered for type: unregistered"
-    ):
+    with pytest.raises(ValueError, match="No job function registered for type: unregistered"):
         get_job_func("unregistered")
 
 

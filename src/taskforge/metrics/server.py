@@ -1,3 +1,5 @@
+"""HTTP exporter that serves a worker's Prometheus metrics."""
+
 import logging
 import os
 import threading
@@ -14,16 +16,16 @@ _lock = threading.Lock()
 
 
 def resolve_metrics_port(port: int | None = None) -> int:
-    """Return ``port``, else ``TASKFORGE_METRICS_PORT``, else the default."""
+    """Return `port`, else `TASKFORGE_METRICS_PORT`, else the default."""
     if port is not None:
         return port
     return int(os.getenv("TASKFORGE_METRICS_PORT", DEFAULT_METRICS_PORT))
 
 
 def start_metrics_server(port: int | None = None) -> bool:
-    """Expose Prometheus metrics on ``http://0.0.0.0:<port>/metrics``.
+    """Expose Prometheus metrics on `http://0.0.0.0:<port>/metrics`.
 
-    Starts at most once per process (several ``Worker`` objects in one process
+    Starts at most once per process (several `Worker` objects in one process
     share the exporter). If the port is taken, e.g. by another worker process on
     the same host, a warning is logged and the worker keeps running without
     an exporter.

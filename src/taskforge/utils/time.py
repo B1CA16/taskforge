@@ -1,3 +1,5 @@
+"""UTC time helpers. TaskForge stores and compares every timestamp in UTC."""
+
 import datetime
 
 
@@ -7,7 +9,7 @@ def utcnow() -> datetime.datetime:
 
 
 def ensure_utc(value: datetime.datetime | None) -> datetime.datetime | None:
-    """Return ``value`` as an aware UTC datetime.
+    """Return `value` as an aware UTC datetime.
 
     Naive datetimes are assumed to already be in UTC (that's how TaskForge
     stores them on backends without timezone support, such as SQLite).

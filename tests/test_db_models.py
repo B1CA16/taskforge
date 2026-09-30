@@ -1,5 +1,6 @@
 import pytest
 from sqlalchemy.exc import IntegrityError
+
 from taskforge.task_queue.models import Job, Queue
 
 

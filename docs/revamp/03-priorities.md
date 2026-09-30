@@ -1,8 +1,8 @@
-# TaskForge — Priorities & Milestones
+# TaskForge — Priorities & milestones
 
-_2026-09-25 · Ordered plan to get from [the current state](01-AUDIT.md) to [the spec](02-SPEC.md)._
+_2026-09-25 · Ordered plan to get from [the current state](01-audit.md) to [the spec](02-spec.md)._
 
-**Guiding rule:** *correct → installable → operable → delightful.* Don't build features on top of a red test suite, and don't publish until a stranger can install it and it works.
+**Guiding rule:** _correct → installable → operable → delightful._ Don't build features on top of a red test suite, and don't publish until a stranger can install it and it works.
 
 Priority key: **P0** do first, blocks everything · **P1** needed for the first public release · **P2** makes it production-worthy · **P3** differentiators / growth.
 Size: S ≈ < ½ day · M ≈ 1–3 days · L ≈ 1–2 weeks.
@@ -11,7 +11,7 @@ Size: S ≈ < ½ day · M ≈ 1–3 days · L ≈ 1–2 weeks.
 
 ## Milestone 0: Save the work & stop the bleeding (P0, ~1 week)
 
-Goal: green tests, no data-destroying or silently-wrong behaviour, and an honest version number.
+Goal: green tests, no data-destroying or silently-wrong behavior, and an honest version number.
 
 > **Status (2026-09-26): ✅ done on branch `chore/m0-stabilize`.** 90/90 tests pass on Postgres 17 (Python 3.13 on Windows, Python 3.10 on Linux). See `CHANGELOG.md`.
 > Still open from M0: reserving the PyPI name (0.3, needs your PyPI account). Pulled forward from M1: the `init-db` command, graceful shutdown, and binding the demo dashboard to 127.0.0.1.
@@ -26,7 +26,7 @@ Goal: green tests, no data-destroying or silently-wrong behaviour, and an honest
 | 0.6 | Remove import-time side effects: lazy engine creation (H1), and **delete every `setup_logging()` call from library modules**, calling it only from CLI entry points (H2). | H1, H2 | M |
 | 0.7 | Worker: only sleep when no job was found (B4). Handle SIGTERM/SIGINT: finish the current job, deregister, exit (B6). If the post-execution commit fails, mark the job failed in a fresh transaction instead of leaving it `running` (B1, partial). Replay should mark the original job as replayed and link it to the new one (B12). | B1, B4, B6, B12 | M |
 | 0.8 | Switch to `timestamptz` columns and compare with DB `now()` consistently (B7), which removes the `_ensure_aware` hacks. Add the composite claim index (B15). Use a real `failed` state, or drop it from the UI (B14). | B7, B14, B15 | S |
-| 0.9 | Fix the docs that currently lie: `TESTING_STRATEGY.md` (Postgres), `architecture.md` (no reclaim yet), `ROADMAP.md` Phase 5 "completed", README placeholders. | §4 | S |
+| 0.9 | Fix the docs that currently lie: `docs/contributing/testing.md` (Postgres), `architecture.md` (no reclaim yet), `docs/roadmap.md` Phase 5 "completed", README placeholders. | §4 | S |
 
 **Exit criteria:** `pytest` is 100% green on Postgres 17 and Python 3.10 + 3.13. Importing `taskforge` in a fresh interpreter with no env vars works and doesn't touch logging.
 
@@ -38,7 +38,7 @@ Goal: `pip install taskforge-queue` works for a stranger, CI guards every change
 
 | # | Task | Spec § | Size |
 |---|---|---|---|
-| 1.0 | ✅ **Conventions**: code style (docstring templates, comments, logging, errors, glossary), writing-docs guide, CONTRIBUTING, PR template; Ruff, EditorConfig and markdownlint configured. **Next:** apply them to the existing code and docs (about 103 Ruff findings, 19 files to reformat, about 340 Markdown findings, and file renames to kebab-case). | 10 | S |
+| 1.0 | ✅ **Conventions**: code style (docstring templates, comments, logging, errors, glossary), writing-docs guide, CONTRIBUTING, PR template; Ruff, EditorConfig and markdownlint configured. ✅ Applied to the existing code and docs (Ruff and markdownlint clean, files renamed). | 10 | S |
 | 1.1 | **Packaging**: hatchling + hatch-vcs, extras (`postgres`, `dashboard`, `metrics`, `cli`), package data (static, **templates: missing from the wheel today, so the installed dashboard 404s**, migrations), `py.typed`, `[project.scripts] taskforge`. | 9 | M |
 | 1.2 | **`TaskForge` app object + `@tf.job` + `.enqueue()`**, with deprecated shims for `register` / `enqueue_single_job`. Config from args → env → defaults. | 3.1–3.2 | L |
 | 1.3 | **Transactional enqueue** (`_session=`). It's the headline feature, so do it early. | 3.2 | S |
@@ -48,7 +48,7 @@ Goal: `pip install taskforge-queue` works for a stranger, CI guards every change
 | 1.7 | **CI**: `ci.yml` (lint, test matrix with a Postgres service, build + install-from-wheel smoke test), Codecov, Dependabot. | 11 | M |
 | 1.8 | **Release pipeline**: release-please + `release.yml` with PyPI Trusted Publishing (TestPyPI first). | 11 | S |
 | 1.9 | **README rewrite** per spec §13, plus `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue/PR templates. | 13, 15 | M |
-| 1.10 | **Docstrings & comments pass** on the public API (Google style) and on the tricky parts (claim query, state transitions): *why*, not *what*. | 10 | M |
+| 1.10 | **Docstrings & comments pass** on the public API (Google style) and on the tricky parts (claim query, state transitions): _why_, not _what_. | 10 | M |
 | 1.11 | Replace `demo_client/` with `examples/quickstart/` + `docker-compose.yml` (pg + worker + dashboard). | 14 | S |
 | 1.12 | **Dashboard hardening only** (not the redesign yet): move it to an extra; require token/basic auth, especially on `POST /replay`; bind `127.0.0.1` by default, no `reload`; vendor htmx; hide `/docs` unless enabled; optional payload redaction. | 7.1 | M |
 
@@ -77,7 +77,7 @@ Goal: you can trust it with real traffic. Nothing gets stuck, it scales, and shu
 
 ## Milestone 3: Dashboards, observability & docs site → `0.4.0` (P2, ~3 weeks)
 
-Goal: operators can *see* what's happening, and newcomers can learn it without reading source.
+Goal: operators can _see_ what's happening, and newcomers can learn it without reading source.
 
 | # | Task | Spec § | Size |
 |---|---|---|---|
@@ -107,6 +107,7 @@ Goal: operators can *see* what's happening, and newcomers can learn it without r
 ---
 
 ## Milestone 5: `1.0.0` (P3)
+
 - Freeze and document the public API; deprecations removed.
 - At least 3 external users/issues, the docs Quickstart validated by someone new.
 - A security review of the dashboard; `SECURITY.md` process exercised.
@@ -114,7 +115,8 @@ Goal: operators can *see* what's happening, and newcomers can learn it without r
 
 ---
 
-## Ideas backlog (unprioritised, pick later)
+## Ideas backlog (unprioritized, pick later)
+
 - **Webhooks** on job completion/failure (a job type itself, so it gets retries for free).
 - **Circuit breaker** per task: auto-pause a task after N consecutive failures and alert.
 - **Job result backend API** + `JobHandle.result(timeout=)` using NOTIFY.
@@ -128,8 +130,9 @@ Goal: operators can *see* what's happening, and newcomers can learn it without r
 ---
 
 ## Suggested immediate next 5 actions
+
 1. Park the old local experiment on a branch, `git pull` `main`, and delete the stray files (0.1).
 2. Pick the PyPI name and reserve it (0.3).
 3. Spin up Postgres via compose and make the suite green (0.4, 0.5).
 4. Rip out the import-time logging/engine side effects (0.6).
-5. Add a minimal `ci.yml` right away so the suite *stays* green while everything else changes (pulling 1.7 forward).
+5. Add a minimal `ci.yml` right away so the suite _stays_ green while everything else changes (pulling 1.7 forward).

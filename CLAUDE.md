@@ -20,4 +20,4 @@ The short version:
 - Tests need Postgres: `docker compose up -d test-db`, then `pytest`. The suite drops all tables and refuses databases whose name doesn't contain `test`. Never point it anywhere else.
 - Before finishing, run `ruff format .`, `ruff check .` and `pytest`.
 - The library must never configure logging or touch the database at import time.
-- Plans and priorities: [docs/revamp/03-PRIORITIES.md](docs/revamp/03-PRIORITIES.md). The spec: [docs/revamp/02-SPEC.md](docs/revamp/02-SPEC.md).
+- Plans and priorities: [docs/revamp/03-priorities.md](docs/revamp/03-priorities.md). The spec: [docs/revamp/02-spec.md](docs/revamp/02-spec.md).
