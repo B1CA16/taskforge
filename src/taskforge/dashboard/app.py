@@ -8,16 +8,11 @@ from sqlalchemy.orm import Session
 from taskforge.task_queue.models import Job, JobStatus, Queue, WorkerRecord, WorkerStatus
 from taskforge.dashboard.dependencies import get_db
 from taskforge.dashboard.api import router as api_router
-import datetime
+from taskforge.utils.time import ensure_utc, utcnow
+from taskforge import __version__
 
-app = FastAPI(title="TaskForge Dashboard", version="1.0.0")
+app = FastAPI(title="TaskForge Dashboard", version=__version__)
 
-
-def _ensure_aware(dt):
-    """Ensure a datetime is timezone-aware (SQLite strips tzinfo)."""
-    if dt is not None and dt.tzinfo is None:
-        return dt.replace(tzinfo=datetime.UTC)
-    return dt
 
 # Mount API routes
 app.include_router(api_router)
@@ -57,8 +52,8 @@ def format_datetime(dt):
 def time_ago(dt):
     if dt is None:
         return "N/A"
-    now = datetime.datetime.now(datetime.UTC)
-    dt = _ensure_aware(dt)
+    now = utcnow()
+    dt = ensure_utc(dt)
     diff = now - dt
     seconds = diff.total_seconds()
     if seconds < 60:
@@ -104,14 +99,14 @@ def dashboard_overview(request: Request, db: Session = Depends(get_db)):
     total_dead = sum(q["dead"] for q in queues)
 
     # Workers
-    now = datetime.datetime.now(datetime.UTC)
+    now = utcnow()
     workers_stmt = select(WorkerRecord).order_by(WorkerRecord.started_at.desc())
     workers_raw = db.execute(workers_stmt).scalars().all()
     workers = []
     for w in workers_raw:
         effective_status = w.status.value
         if w.status == WorkerStatus.online and w.last_heartbeat_at:
-            if (now - _ensure_aware(w.last_heartbeat_at)).total_seconds() > 60:
+            if (now - ensure_utc(w.last_heartbeat_at)).total_seconds() > 60:
                 effective_status = "lost"
         workers.append({
             "id": w.id,

@@ -6,11 +6,13 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
 )
 
+from taskforge.config.logging import setup_logging
 from taskforge.task_queue.db import enqueue_single_job
 import my_sample_jobs  # This import runs the @register decorators
 
 
 if __name__ == "__main__":
+    setup_logging()
     print("--- Enqueueing Jobs ---")
     enqueue_single_job("greet_user", {"name": "Alice"}, tags={"env": "demo", "team": "onboarding"})
     enqueue_single_job("add_numbers", {"a": 10, "b": 20}, tags={"env": "demo"})

@@ -48,7 +48,7 @@ docker exec -it taskforge-postgres psql -U postgres
 Create a `.env` file in the root of your project:
 
 ```
-DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5435/postgres
+TASKFORGE_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5435/postgres
 
 ```
 
@@ -56,21 +56,19 @@ DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5435/postgres
 
 ---
 
-## 5. Set PYTHONPATH and test database
+## 5. Create the tables
 
-From the root of your project:
+From the root of your project, with the virtual environment active (`pip install -e ".[dev]"` puts `src/` on the path, so there's no need to set `PYTHONPATH`):
 
 ```powershell
-# Set PYTHONPATH so Python can locate src/
-$env:PYTHONPATH="$PWD/src"
-
-# Run the test DB script
-python -m taskforge.task_queue.test_db
-
+python -m taskforge.cli.main init-db
 ```
 
--   This should create all tables defined in `models.py`.
+-   This creates any missing TaskForge tables. It never drops or alters existing ones.
 -   No authentication or timeout errors should occur.
+
+> **Running the test suite?** Don't use this database: the tests drop all tables.
+> Use the disposable one instead: `docker compose up -d test-db` (port 5436).
 
 ---
 

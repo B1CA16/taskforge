@@ -15,7 +15,7 @@ if __name__ == "__main__":
     print("Press Ctrl+C to stop.")
     uvicorn.run(
         "taskforge.dashboard.app:app",
-        host="0.0.0.0",
+        host="127.0.0.1",  # local only: the dashboard has no authentication yet
         port=8000,
         reload=True,
     )

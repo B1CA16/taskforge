@@ -10,7 +10,18 @@ Tests are a cornerstone of this project and are organized to cover functionality
 -   **Integration Tests:** For components that work together (e.g., the worker processing a job from the database).
 -   **Edge Case Tests:** To ensure the system behaves gracefully with unexpected inputs or in specific scenarios.
 
-The test suite uses `pytest` and an in-memory SQLite database for speed and isolation, allowing tests to run without external dependencies.
+The test suite uses `pytest` against a **real PostgreSQL**, because the worker's claim query (`FOR UPDATE SKIP LOCKED`) is Postgres-only.
+
+## Running the tests
+
+```powershell
+docker compose up -d test-db   # Postgres 17 on port 5436, data kept in memory
+pytest
+```
+
+-   **Safety:** every test drops and recreates all tables, so `tests/conftest.py` refuses to run unless the database name contains `test`. It ignores `DATABASE_URL`/`.env` and uses `TASKFORGE_TEST_DATABASE_URL` (default `postgresql+psycopg://postgres:postgres@127.0.0.1:5436/taskforge_test`).
+-   **Timezones:** the test database runs in a non-UTC timezone (`Europe/Lisbon`) on purpose, so timezone bugs make tests fail instead of hiding.
+-   If the database isn't reachable, the run stops with a hint to start it.
 
 ## Comprehensive Test Coverage
 
@@ -51,3 +62,16 @@ The test suite provides extensive coverage across all major features of the libr
 ### 7. Command-Line Interface (CLI)
 -   The `dead-letter` command correctly fetches and displays jobs from the dead-letter queue.
 -   The command handles the case where the dead-letter queue is empty.
+
+### 8. Regression tests (`test_regressions.py`)
+One test per bug found in the 2026-09 audit ([docs/revamp/01-AUDIT.md](docs/revamp/01-AUDIT.md)):
+-   Importing TaskForge needs no database and doesn't touch the host's logging.
+-   The first session in a fresh process doesn't deadlock.
+-   The suite refuses non-test databases.
+-   Jobs never stay `running` because their outcome couldn't be saved (e.g. a non-JSON result).
+-   Workers drain a backlog without sleeping between jobs, stop promptly, and handle stop signals gracefully.
+-   Retried (`failed`) jobs are picked up again once due.
+-   Timestamps round-trip as UTC, and future jobs aren't run early on a non-UTC server.
+-   The executor doesn't mutate payloads, and duplicate job names are rejected.
+-   A busy metrics port doesn't crash the worker, and queue-depth gauges reset to 0.
+-   The dashboard handles scalar results and refuses to replay a job twice (409).

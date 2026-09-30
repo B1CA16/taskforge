@@ -1,7 +1,27 @@
-from taskforge.db.base import engine, SessionLocal
-from .models import Job, Queue, JobStatus
-from taskforge.db.connection import get_session
 import datetime
+
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from taskforge.db.connection import get_session
+from taskforge.metrics.collectors import jobs_enqueued_total
+
+from .models import Job, JobStatus, Queue
+
+
+def _get_or_create_queue(session: Session, queue_name: str) -> Queue:
+    queue = session.query(Queue).filter_by(name=queue_name).first()
+    if queue:
+        return queue
+    try:
+        # A savepoint, so losing the race only rolls back this INSERT.
+        with session.begin_nested():
+            queue = Queue(name=queue_name)
+            session.add(queue)
+        return queue
+    except IntegrityError:
+        # Another producer created the same queue concurrently; use theirs.
+        return session.query(Queue).filter_by(name=queue_name).one()
 
 
 def enqueue_single_job(
@@ -11,28 +31,27 @@ def enqueue_single_job(
     max_attempts: int | None = None,
     scheduled_at: datetime.datetime | None = None,
     tags: dict | None = None,
-):
-    """
-    Enqueues a single job into the specified queue.
+) -> Job:
+    """Enqueue a single job into the specified queue.
+
+    The queue is created on first use.
 
     Args:
         job_type: The type of the job to enqueue, matching a registered job function.
         payload: The dictionary or list of arguments for the job function.
         queue_name: The name of the queue to add the job to.
-        max_attempts: The maximum number of times the job can be retried.
-        scheduled_at: A datetime object specifying when the job should be executed.
-        tags: Optional key-value metadata for filtering and grouping (e.g. {"env": "prod", "team": "billing"}).
+        max_attempts: The maximum number of times the job can be attempted.
+        scheduled_at: Run the job no earlier than this time. Naive datetimes are
+            interpreted as UTC.
+        tags: Optional key-value metadata for filtering and grouping
+            (e.g. {"env": "prod", "team": "billing"}).
+
+    Returns:
+        The persisted ``Job``.
     """
     with get_session() as session:
-        # Ensure the queue exists, create if not
-        queue = session.query(Queue).filter_by(name=queue_name).first()
-        if not queue:
-            queue = Queue(name=queue_name)
-            session.add(queue)
-            session.commit()
-            session.refresh(queue)
+        queue = _get_or_create_queue(session, queue_name)
 
-        # Create and add the job
         job_kwargs = {
             "type": job_type,
             "payload": payload,
@@ -51,5 +70,6 @@ def enqueue_single_job(
         session.commit()
         session.refresh(job)
 
-        return job
+        jobs_enqueued_total.labels(queue=queue_name, job_type=job_type).inc()
 
+        return job

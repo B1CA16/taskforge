@@ -165,7 +165,8 @@ Optional advanced features to deepen understanding.
 
 ### Status
 
-✅ **COMPLETED** - All Phase 5 features implemented.
+🟡 **PARTIAL.** Done: dead-letter queue, one-off scheduled jobs (`scheduled_at`), and workers on multiple machines (Postgres `SKIP LOCKED`).
+Not started: job prioritisation, cron-like recurring jobs, and a plugin system. Current priorities live in [docs/revamp/03-PRIORITIES.md](docs/revamp/03-PRIORITIES.md).
 
 ---
 

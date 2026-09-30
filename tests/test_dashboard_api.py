@@ -3,15 +3,13 @@ import datetime
 from fastapi.testclient import TestClient
 from taskforge.dashboard.app import app
 from taskforge.dashboard.dependencies import get_db
-from taskforge.task_queue.models import Base, Job, JobStatus, Queue, WorkerRecord, WorkerStatus
-from taskforge.db.connection import engine, get_session
+from taskforge.task_queue.models import Job, JobStatus, Queue, WorkerRecord, WorkerStatus
+from taskforge.db.connection import get_session
 
 
 @pytest.fixture(scope="function")
-def client():
+def client(db_session):
     """Provide a TestClient with a clean database for each test."""
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
 
     def override_get_db():
         with get_session() as session:
@@ -20,7 +18,6 @@ def client():
     app.dependency_overrides[get_db] = override_get_db
     yield TestClient(app)
     app.dependency_overrides.clear()
-    Base.metadata.drop_all(bind=engine)
 
 
 @pytest.fixture()
@@ -45,7 +42,7 @@ def seeded_db(client):
             pid=9999,
             status=WorkerStatus.online,
             queues=["test_queue"],
-            last_heartbeat_at=datetime.datetime.now(datetime.UTC),
+            last_heartbeat_at=datetime.datetime.now(datetime.timezone.utc),
         )
         session.add(worker)
         session.commit()

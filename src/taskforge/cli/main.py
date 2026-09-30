@@ -1,15 +1,22 @@
 import argparse
-import datetime
 import logging
-from sqlalchemy import select, func, case
+from sqlalchemy import select, func
+from taskforge.admin import AdminError, replay_dead_job
 from taskforge.db.connection import get_session
 from taskforge.task_queue.models import Job, JobStatus, Queue, WorkerRecord, WorkerStatus
-from taskforge.task_queue.db import enqueue_single_job
 from taskforge.config.logging import setup_logging
+from taskforge.utils.time import utcnow
 
-# Setup logging when the CLI module is imported
-setup_logging()
 logger = logging.getLogger(__name__)
+
+
+def init_db():
+    """Create any missing TaskForge tables. Never drops or alters existing ones."""
+    from taskforge.db.base import get_engine
+    from taskforge.task_queue.models import Base
+
+    Base.metadata.create_all(bind=get_engine())
+    logger.info("Database tables are ready.", extra={"event": "InitDb"})
 
 
 def view_dead_letter_queue():
@@ -135,42 +142,28 @@ def view_history(args):
             )
 
 
+_REPLAY_ERROR_EVENTS = {
+    "not_found": "ReplayNotFound",
+    "not_dead": "ReplayInvalidStatus",
+    "already_replayed": "ReplayAlreadyReplayed",
+}
+
+
 def replay_job(args):
     """Re-enqueue a dead job as a new pending job."""
-    with get_session() as session:
-        job = session.get(Job, args.job_id)
-
-        if not job:
-            logger.error(f"Job not found: {args.job_id}", extra={"event": "ReplayNotFound", "job_id": args.job_id})
-            return
-
-        if job.status != JobStatus.dead:
-            logger.error(
-                f"Job {args.job_id} is not dead (status: {job.status.value}). Only dead jobs can be replayed.",
-                extra={"event": "ReplayInvalidStatus", "job_id": args.job_id, "status": job.status.value}
-            )
-            return
-
-        # Get the queue name for re-enqueue
-        queue = session.get(Queue, job.queue_id)
-        queue_name = queue.name if queue else "default_queue"
-
-    # Enqueue a new job with the same parameters
-    new_job = enqueue_single_job(
-        job_type=job.type,
-        payload=job.payload,
-        queue_name=queue_name,
-        max_attempts=job.max_attempts,
-        tags=job.tags,
-    )
+    try:
+        replay = replay_dead_job(args.job_id, force=getattr(args, "force", False))
+    except AdminError as e:
+        logger.error(str(e), extra={"event": _REPLAY_ERROR_EVENTS[e.code], "job_id": args.job_id})
+        return
 
     logger.info(
-        f"Replayed dead job {args.job_id} as new job {new_job.id}",
+        f"Replayed dead job {args.job_id} as new job {replay.new_job.id}",
         extra={
             "event": "JobReplayed",
             "original_job_id": args.job_id,
-            "new_job_id": str(new_job.id),
-            "job_type": job.type,
+            "new_job_id": str(replay.new_job.id),
+            "job_type": replay.new_job.type,
         }
     )
 
@@ -186,29 +179,19 @@ def view_workers():
             logger.info("No workers registered.", extra={"event": "WorkersEmpty"})
             return
 
-        now = datetime.datetime.now(datetime.UTC)
+        now = utcnow()
         for worker in workers:
             # Determine effective status: if online but heartbeat is stale, mark as lost
             effective_status = worker.status.value
             if worker.status == WorkerStatus.online and worker.last_heartbeat_at:
-                heartbeat = worker.last_heartbeat_at
-                # Ensure both datetimes are tz-aware for comparison
-                if heartbeat.tzinfo is None:
-                    heartbeat = heartbeat.replace(tzinfo=datetime.UTC)
-                seconds_since_heartbeat = (now - heartbeat).total_seconds()
+                seconds_since_heartbeat = (now - worker.last_heartbeat_at).total_seconds()
                 if seconds_since_heartbeat > 60:
                     effective_status = "lost"
 
             uptime = None
             if worker.started_at:
-                started = worker.started_at
-                stopped = worker.stopped_at
-                if started.tzinfo is None:
-                    started = started.replace(tzinfo=datetime.UTC)
-                if stopped and stopped.tzinfo is None:
-                    stopped = stopped.replace(tzinfo=datetime.UTC)
-                end = stopped or now
-                uptime = str(end - started).split(".")[0]  # Remove microseconds
+                end = worker.stopped_at or now
+                uptime = str(end - worker.started_at).split(".")[0]  # Remove microseconds
 
             logger.info(
                 f"Worker {worker.id[:8]}...",
@@ -230,6 +213,10 @@ def main():
     parser = argparse.ArgumentParser(description="TaskForge command-line interface.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    # Command for creating tables
+    parser_init_db = subparsers.add_parser("init-db", help="Create the TaskForge tables if they don't exist.")
+    parser_init_db.set_defaults(func=lambda args: init_db())
+
     # Command for dead-letter queue
     parser_dead_letter = subparsers.add_parser("dead-letter", help="View jobs in the dead-letter queue.")
     parser_dead_letter.set_defaults(func=lambda args: view_dead_letter_queue())
@@ -250,6 +237,7 @@ def main():
     # Command for replaying dead jobs
     parser_replay = subparsers.add_parser("replay", help="Re-enqueue a dead job as a new pending job.")
     parser_replay.add_argument("job_id", type=str, help="The ID of the dead job to replay.")
+    parser_replay.add_argument("--force", action="store_true", help="Replay even if the job was already replayed.")
     parser_replay.set_defaults(func=replay_job)
 
     # Command for worker status
@@ -257,6 +245,7 @@ def main():
     parser_workers.set_defaults(func=lambda args: view_workers())
 
     args = parser.parse_args()
+    setup_logging()
     args.func(args)
 
 

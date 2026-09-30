@@ -1,0 +1,25 @@
+# Local development services.
+#
+#   docker compose up -d test-db     # disposable Postgres for the test suite
+#
+# The test database keeps its data in memory (tmpfs): it is wiped on every
+# restart, which is exactly what the test suite wants.
+services:
+  test-db:
+    image: postgres:17
+    container_name: taskforge-test-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: taskforge_test
+      TZ: Europe/Lisbon # deliberately non-UTC, so timezone bugs show up in tests
+      PGTZ: Europe/Lisbon
+    ports:
+      - "5436:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d taskforge_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15

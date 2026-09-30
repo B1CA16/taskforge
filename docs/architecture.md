@@ -8,15 +8,21 @@
 
 ## Job Lifecycle
 
--   `pending` → `running` → `done` / `failed`
--   Optional `dead` state for jobs that exceed retry limits
+-   `pending` → `running` → `done`
+-   `running` → `failed` (attempt failed, retry scheduled) → `running` → …
+-   `running` → `dead` once `max_attempts` is reached (the dead-letter state)
+-   All timestamps are stored as timezone-aware UTC (`timestamptz` on Postgres)
 
 ### Locking & Concurrency
 
 -   Each job has `locked_by` and `locked_at` fields
 -   Workers claim jobs using atomic database operations:
     -   PostgreSQL: `SELECT ... FOR UPDATE SKIP LOCKED`
--   If a worker dies while processing, jobs can be reclaimed after a lock timeout
+-   Workers register in the `workers` table and send a heartbeat every 15 s. A worker
+    whose heartbeat is older than 60 s is shown as `lost` in the CLI and dashboard.
+-   **Not implemented yet:** reclaiming jobs from a lost worker. If a worker process is
+    killed mid-job, the job stays `running` until it's handled manually. A graceful stop
+    (Ctrl+C, SIGTERM, Ctrl+Break) always lets the current job finish first.
 
 ### Retries & Backoff
 
@@ -25,7 +31,7 @@ To handle transient failures, the system has a built-in automatic retry mechanis
 -   **Process**: When a job fails, the `Worker` checks if `job.attempts < job.max_attempts`.
 -   **Retry**: If the job can be retried, the `Worker`:
     1.  Increments `job.attempts`.
-    2.  Resets the status to `pending`.
+    2.  Sets the status to `failed` (a worker picks it up again once `scheduled_at` has passed).
     3.  Calculates a new `scheduled_at` timestamp using an exponential backoff formula (`10 * (2 ** attempts)` seconds), preventing failing jobs from overwhelming the system.
 -   **Dead-Letter Queue**: If a job fails and has no retries left, its status is changed to `dead`. This effectively removes it from normal processing and places it in a "dead-letter" state, allowing for manual inspection later.
 
@@ -40,13 +46,13 @@ To handle transient failures, the system has a built-in automatic retry mechanis
 | `type`          | string    | Job type / function to execute                                       |
 | `payload`       | JSON      | Data required for execution                                          |
 | `status`        | enum      | Current state (`pending`, `running`, `done`, `failed`, `dead`)       |
-| `created_at`    | timestamp | When job was created                                                 |
-| `updated_at`    | timestamp | Last status update                                                   |
-| `scheduled_at`  | timestamp | When job is scheduled to run                                         |
+| `created_at`    | timestamptz | When job was created                                                 |
+| `updated_at`    | timestamptz | Last status update                                                   |
+| `scheduled_at`  | timestamptz | When job is scheduled to run                                         |
 | `attempts`      | integer   | Number of attempts                                                   |
 | `max_attempts`  | integer   | Maximum retry limit (configured globally, can be overridden per-job) |
 | `locked_by`     | string    | Worker that claimed the job                                          |
-| `locked_at`     | timestamp | Time when job was claimed                                            |
+| `locked_at`     | timestamptz | Time when job was claimed                                            |
 | `result`        | JSON      | Output of the job                                                    |
 | `error_message` | text      | Last error message                                                   |
 
@@ -107,7 +113,7 @@ A basic command-line interface (CLI) is provided to inspect the state of the job
 ## Guidelines & Rules
 
 -   Write tests for core functionality
--   Document any new design decisions in `ARCHITECTURE.md`
+-   Document any new design decisions in `docs/architecture.md`
 -   Keep jobs idempotent to ensure at-least-once execution
 
 ## Guarantees

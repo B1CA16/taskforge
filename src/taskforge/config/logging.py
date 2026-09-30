@@ -56,8 +56,15 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(log_entry)
 
 def setup_logging(log_level=logging.INFO, formatter_type='color'):
-    """
-    Sets up a centralized, structured logger for the entire application.
+    """Configure the root logger for TaskForge's own entry points.
+
+    Call this from applications and scripts (the CLI does it for you). The
+    library itself never calls it, so importing TaskForge leaves the host
+    application's logging configuration untouched.
+
+    Args:
+        log_level: Minimum level for the root logger.
+        formatter_type: ``"color"`` (human-readable, default) or ``"json"``.
     """
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
@@ -80,6 +87,3 @@ def setup_logging(log_level=logging.INFO, formatter_type='color'):
     root_logger.addHandler(handler)
 
     logging.getLogger('sqlalchemy').setLevel(logging.WARNING)
-
-# Run setup on import to configure default colored logging
-setup_logging()

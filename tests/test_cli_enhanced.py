@@ -143,7 +143,34 @@ def test_replay_dead_job(db_session, caplog):
     ).scalars().all()
     assert len(new_jobs) == 1
     assert new_jobs[0].payload == {"key": "value"}
-    assert new_jobs[0].tags == {"env": "test"}
+    assert new_jobs[0].tags == {"env": "test", "taskforge.replayed_from": dead_job.id}
+
+    # The original stays dead, linked to its replacement
+    db_session.expire_all()
+    original = db_session.get(Job, dead_job.id)
+    assert original.status == JobStatus.dead
+    assert original.tags["taskforge.replayed_as"] == new_jobs[0].id
+
+
+def test_replay_same_dead_job_twice_is_refused(db_session, caplog):
+    """Replaying an already-replayed job would run the same work twice."""
+    queue = Queue(name="default")
+    db_session.add(queue)
+    db_session.commit()
+    dead_job = Job(type="failing_task", queue_id=queue.id, status=JobStatus.dead)
+    db_session.add(dead_job)
+    db_session.commit()
+
+    replay_job(MockArgs(job_id=dead_job.id))
+    with caplog.at_level(logging.ERROR):
+        replay_job(MockArgs(job_id=dead_job.id))
+
+    assert any(r.__dict__.get("event") == "ReplayAlreadyReplayed" for r in caplog.records)
+    from sqlalchemy import select, func
+    pending = db_session.execute(
+        select(func.count(Job.id)).where(Job.status == JobStatus.pending)
+    ).scalar()
+    assert pending == 1
 
 
 def test_replay_non_dead_job_fails(db_session, caplog):
@@ -184,7 +211,7 @@ def test_view_workers_shows_registered_workers(db_session, caplog):
         pid=1234,
         status=WorkerStatus.online,
         queues=["default_queue"],
-        last_heartbeat_at=datetime.datetime.now(datetime.UTC),
+        last_heartbeat_at=datetime.datetime.now(datetime.timezone.utc),
     )
     db_session.add(worker)
     db_session.commit()
@@ -204,7 +231,7 @@ def test_view_workers_shows_registered_workers(db_session, caplog):
 
 def test_view_workers_detects_lost_worker(db_session, caplog):
     """Test that a worker with stale heartbeat is shown as lost."""
-    stale_time = datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=120)
+    stale_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=120)
     worker = WorkerRecord(
         id="worker-002",
         hostname="host1",

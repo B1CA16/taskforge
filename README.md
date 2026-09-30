@@ -1,186 +1,203 @@
 # TaskForge
 
-**TaskForge** is a lightweight, durable, and reliable background job processing library for Python, built with a database-backed queueing system.
-
-It enables you to define, enqueue, and execute tasks asynchronously, outside of the request/response cycle of a typical web application. It is designed for simplicity, reliability, and easy integration into any Python project.
+**Background jobs for Python, stored in your Postgres database. No Redis, no broker.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## What is TaskForge?
+> **Status: alpha (0.2.0.dev).** The API will change before 1.0. Pre-releases are on PyPI as
+> [`taskforge-queue`](https://pypi.org/project/taskforge-queue/) (`pip install --pre taskforge-queue`); the first stable release is 0.2.0.
+> See [`docs/revamp/`](https://github.com/B1CA16/taskforge/blob/main/docs/revamp/) for the audit, spec and roadmap.
 
-In many applications, there are tasks that you don't want to run during the user's web request because they are too slow (e.g., sending an email, processing an image, generating a report). TaskForge provides the infrastructure to offload these tasks to a background "worker" process.
+Some work is too slow to do inside a web request: sending an email, resizing an image, generating a report. TaskForge moves it to a background **worker**. Jobs are rows in a **queue** table in your Postgres database, so they survive restarts, and a worker claims each one with `SELECT … FOR UPDATE SKIP LOCKED`, which means you can run as many workers as you like.
 
-A central component, the **queue**, stores jobs in your database. A **worker** process polls the queue for new jobs, executes them, and records the outcome.
+## Features
 
-## Key Features
+- **Postgres-backed queue.** Jobs are durable and safe to consume from many workers at once.
+- **`@register` decorator.** Any function can be a job.
+- **Retries with exponential backoff**, then a **dead-letter** state for jobs that keep failing, with one-click replay.
+- **Scheduled jobs.** Run no earlier than a given time.
+- **Tags.** Attach key/value metadata to jobs and filter by it.
+- **Worker registry with heartbeats.** See which workers are online, offline or lost.
+- **Web dashboard** (FastAPI + HTMX): overview, job search, job details, replay.
+- **Prometheus metrics** exported by each worker.
+- **CLI** for stats, history, workers, dead-letter and replay.
+- **Graceful shutdown.** On Ctrl+C, SIGTERM or Ctrl+Break, the worker finishes the current job first.
 
-- **Database-Backed Queue:** Uses your existing database (via SQLAlchemy) to provide durable, persistent job storage. If the worker restarts, your jobs are not lost.
-- **Decorator-Based Job Creation:** Define your background jobs with a simple `@register` decorator on your Python functions.
-- **Automatic Retries with Exponential Backoff:** If a job fails, TaskForge will automatically retry it several times with an increasing delay, which helps recover from transient errors.
-- **Dead-Letter Queue:** After a job has failed all its retry attempts, it is moved to a "dead-letter" queue so it can be inspected and handled manually.
-- **Concurrency-Safe Workers:** You can run multiple worker processes simultaneously to scale up your job processing throughput. A robust locking mechanism (`SELECT ... FOR UPDATE SKIP LOCKED`) ensures that each job is processed by only one worker.
-- **Scheduled Jobs:** Enqueue jobs to run at a specific time in the future.
-- **Command-Line Interface (CLI):** Includes a handy CLI for administrative tasks, such as viewing the dead-letter queue.
+Not implemented yet: reclaiming jobs from crashed workers, concurrency within a worker, priorities, cron schedules, dashboard authentication. See the [roadmap](https://github.com/B1CA16/taskforge/blob/main/docs/revamp/03-PRIORITIES.md).
+
+## Requirements
+
+- Python 3.10+
+- PostgreSQL 13+. SQLite works for the dashboard and CLI but **not** for workers, which need `SKIP LOCKED`.
 
 ## Installation
 
-_(This project is not yet packaged for PyPI. The following are instructions for local development.)_
+```powershell
+pip install --pre taskforge-queue
+```
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/taskforge.git
-    cd taskforge
-    ```
+Or from source, for development:
 
-2.  **Install dependencies:**
-    It is recommended to use a virtual environment.
-    ```bash
-    python -m venv .venv
-    source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
-    pip install -r requirements.txt 
-    ```
-    _(Note: A `requirements.txt` would need to be created for this step)_
+```powershell
+git clone https://github.com/B1CA16/taskforge.git
+cd taskforge
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+```
 
-## Getting Started: A Quick Example
+<details><summary>macOS / Linux</summary>
 
-The `demo_client` directory contains a simple example to showcase how TaskForge works.
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+```
+</details>
 
-### 1. Define Your Jobs
+## Quick start
 
-Create a file for your job functions and decorate them with `@register`.
+**1. Point TaskForge at a database.** Copy `.env.example` to `.env` and set the URL, or set it for the current PowerShell session:
 
-`demo_client/my_sample_jobs.py`:
+```powershell
+$env:TASKFORGE_DATABASE_URL = "postgresql+psycopg://postgres:postgres@127.0.0.1:5435/postgres"
+```
+
+No Postgres yet? See [docs/DOCKER_PG_SETUP.md](https://github.com/B1CA16/taskforge/blob/main/docs/DOCKER_PG_SETUP.md).
+
+**2. Create the tables** (safe to re-run; it never drops anything):
+
+```powershell
+python -m taskforge.cli.main init-db
+```
+
+**3. Define jobs.** From [`demo_client/my_sample_jobs.py`](https://github.com/B1CA16/taskforge/blob/main/demo_client/my_sample_jobs.py):
+
 ```python
 from taskforge.jobs.registry import register
-import time
-import logging
 
-@register("greet_user")
-def greet_user(name: str, logger: logging.Logger):
-    """A sample job that prints a greeting."""
-    logger.info(f"Hello, {name}! This is a registered job speaking.")
-    time.sleep(2)
-    return f"Greeting job completed for {name}."
-
-@register("fail_example")
-def fail_example(message: str, logger: logging.Logger):
-    """A sample job that is designed to fail."""
-    logger.error(f"This job is designed to fail: {message}")
-    raise ValueError(f"Job failed: {message}")
+@register("add_numbers")
+def add_numbers(a: int, b: int, logger=None):
+    if logger:
+        logger.info(f"Adding {a} and {b}")
+    return a + b
 ```
 
-### 2. Enqueue Jobs
+**4. Start a worker**, in terminal 1:
 
-From your application code, you can enqueue a job to be run in the background.
-
-`demo_client/enqueue_job.py`:
-```python
-from taskforge.task_queue.db import enqueue_single_job
-import my_sample_jobs # Ensures jobs are registered
-
-print("--- Enqueueing Jobs ---")
-# Enqueue a job to the 'default_queue'
-enqueue_single_job("greet_user", {"name": "Alice"})
-
-# Enqueue a job that will fail and be retried
-enqueue_single_job(
-    "fail_example", 
-    {"message": "This will be retried"}, 
-    max_attempts=5
-)
-print("--- Jobs Enqueued ---")
+```powershell
+python demo_client\run_worker.py
 ```
 
-### 3. Run the Worker
+**5. Enqueue jobs**, in terminal 2:
 
-Start a worker process in a separate terminal. The worker will poll the queue and execute any jobs it finds.
-
-```bash
-# In Terminal 1
-python demo_client/run_worker.py
-```
-You will see logs indicating the worker has started and is polling the queue.
-
-### 4. Run the Enqueuer
-
-In another terminal, run the script to add the jobs to the queue.
-
-```bash
-# In Terminal 2
-python demo_client/enqueue_job.py
+```powershell
+python demo_client\enqueue_job.py
 ```
 
-You will now see log output in Terminal 1 as the worker picks up, executes, and completes (or fails) the jobs.
+The worker picks the jobs up immediately. One of the demo jobs fails on purpose, so you'll also see a retry being scheduled and a job moving to the dead-letter queue.
 
 ## Usage
 
-### Defining Jobs
+### Defining jobs
 
-- Any function can be turned into a background job by adding the `@register("job_type_name")` decorator.
-- The `job_type_name` is a unique string that identifies the job.
-- The function can accept arguments. These will be passed in the `payload` when the job is enqueued.
-- For best practice, include a `logger` argument in your function signature. TaskForge will automatically inject a job-specific logger.
+- Decorate a function with `@register("job_type")`. Each name must be unique; registering a different function under an existing name raises `ValueError`.
+- A `dict` payload is passed as keyword arguments, and a `list` payload as positional arguments.
+- If the function has a `logger` parameter, TaskForge injects a logger that adds `job_id`, `job_type` and `worker_id` to every record.
+- The return value is stored as the job's `result` and must be JSON-serializable.
+- Jobs can run more than once (at-least-once delivery), so make them **idempotent**.
 
-### Enqueuing Jobs
-
-The `taskforge.task_queue.db.enqueue_single_job` function is the primary way to create new jobs.
+### Enqueuing jobs
 
 ```python
+from datetime import datetime, timedelta, timezone
+from taskforge.task_queue.db import enqueue_single_job
+
 enqueue_single_job(
-    job_type: str,
-    payload: dict | list | None = None,
-    queue_name: str = "default_queue",
-    max_attempts: int | None = None,
-    scheduled_at: datetime | None = None
+    "add_numbers",                     # job_type used in @register
+    {"a": 1, "b": 2},                  # dict -> kwargs, list -> args
+    queue_name="default_queue",
+    max_attempts=5,                    # overrides DEFAULT_MAX_ATTEMPTS
+    scheduled_at=datetime.now(timezone.utc) + timedelta(minutes=5),  # naive = UTC
+    tags={"team": "billing"},
 )
 ```
 
-- `job_type`: The string name you used in the `@register` decorator.
-- `payload`: A `dict` (for keyword arguments) or `list` (for positional arguments) to pass to your job function.
-- `queue_name`: The name of the queue to add the job to.
-- `max_attempts`: Override the default number of retries for this specific job.
-- `scheduled_at`: A `datetime` object specifying when the job should be executed.
+### Running workers
+
+```python
+from taskforge.config.logging import setup_logging
+from taskforge.worker.worker import Worker
+import my_jobs  # importing the module registers the jobs
+
+setup_logging()  # TaskForge never configures logging on its own
+Worker(queues=["default_queue"]).run()
+```
+
+`Worker` options: `queues`, `poll_interval` (seconds to wait when idle, default 1), `enable_metrics`, `metrics_port` (default `TASKFORGE_METRICS_PORT` or 9464), `handle_signals`.
+
+A failed job is retried after `10 × 2^attempt` seconds (20 s, 40 s, …) and moves to `dead` after `max_attempts`.
+
+### Job states
+
+| Status | Meaning |
+|---|---|
+| `pending` | Waiting for its first run |
+| `running` | Claimed by a worker |
+| `failed` | Last attempt failed; retry scheduled at `scheduled_at` |
+| `done` | Finished successfully |
+| `dead` | Out of attempts; inspect it, then replay it |
 
 ## Configuration
 
+| Variable | Default | Purpose |
+|---|---|---|
+| `TASKFORGE_DATABASE_URL` (or `DATABASE_URL`) | none (required) | SQLAlchemy URL, e.g. `postgresql+psycopg://user:pw@host:5432/db`. A `.env` file in the working directory is read if neither is set. |
+| `DEFAULT_MAX_ATTEMPTS` | `3` | Attempts per job (including the first run) |
+| `TASKFORGE_METRICS_PORT` | `9464` | Port for each worker's Prometheus exporter |
 
+## CLI
 
--   **Database Connection:** TaskForge uses SQLAlchemy to connect to the database. The connection string *must* be provided via the `DATABASE_URL` environment variable (e.g., in a `.env` file or directly in your environment). TaskForge expects this variable to be set.
-
-    Example: `DATABASE_URL="postgresql://user:password@host:port/database_name"`
-
--   **Default Max Attempts:** The global default for job retries can be set with the `DEFAULT_MAX_ATTEMPTS` environment variable. The default is `3`.
-
-## Command-Line Interface
-
-TaskForge provides a CLI for administrative tasks.
-
-### View Dead-Letter Queue
-
-To see jobs that have failed all their retry attempts, use the `dead-letter` command:
-
-```bash
-python -m taskforge.cli.main dead-letter
+```powershell
+python -m taskforge.cli.main init-db                   # create missing tables
+python -m taskforge.cli.main stats                     # job counts per queue and status
+python -m taskforge.cli.main history --status dead --tag team=billing --limit 50
+python -m taskforge.cli.main workers                   # registered workers and heartbeat status
+python -m taskforge.cli.main dead-letter               # dead jobs with their last error
+python -m taskforge.cli.main replay <job_id>           # re-enqueue a dead job (once; --force to repeat)
 ```
 
-This will print a list of all jobs in the `dead` status, along with their last error message, for easier debugging.
+## Dashboard
 
-## Running Tests
+```powershell
+python demo_client\run_dashboard.py
+```
 
-The project includes a comprehensive test suite.
+Open http://127.0.0.1:8000. The JSON API is at `/api/*` and the interactive docs at `/docs`.
 
-1.  **Install testing dependencies:**
-    ```bash
-    pip install pytest
-    ```
+> ⚠️ The dashboard has **no authentication yet**. Keep it on `127.0.0.1` or behind a proxy that handles auth.
 
-2.  **Run the tests:**
-    ```bash
-    pytest
-    ```
+## Metrics
 
-See the `TESTING_STRATEGY.md` file for a detailed overview of the testing approach.
+Each worker serves Prometheus metrics at `http://<host>:9464/metrics`:
+- `taskforge_jobs_processed_total{queue,job_type,status}`
+- `taskforge_jobs_enqueued_total{queue,job_type}` (counted in the process that enqueues)
+- `taskforge_job_execution_duration_seconds`
+- `taskforge_queue_depth{queue,status}`
+- `taskforge_active_workers{queue}`
+
+If the port is already taken (for example, by a second worker on the same machine), the worker logs a warning and keeps running without an exporter.
+
+## Development
+
+The test suite runs against a disposable Postgres in Docker (port 5436, data in memory):
+
+```powershell
+docker compose up -d test-db
+pytest
+```
+
+The suite **drops all tables**, so it refuses to run unless the database name contains `test`. Point it elsewhere with `TASKFORGE_TEST_DATABASE_URL`. See [TESTING_STRATEGY.md](https://github.com/B1CA16/taskforge/blob/main/TESTING_STRATEGY.md).
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+MIT. See [LICENSE](https://github.com/B1CA16/taskforge/blob/main/LICENSE).

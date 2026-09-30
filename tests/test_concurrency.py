@@ -52,7 +52,7 @@ def test_concurrent_workers_process_jobs_once(db_session):
 
     # Act: Start multiple workers in separate threads
     num_workers = 3
-    workers = [Worker(queues=[queue_name]) for _ in range(num_workers)]
+    workers = [Worker(queues=[queue_name], enable_metrics=False) for _ in range(num_workers)]
     threads = [threading.Thread(target=worker.run) for worker in workers]
 
     for t in threads:
@@ -74,5 +74,6 @@ def test_concurrent_workers_process_jobs_once(db_session):
         assert processed_jobs[job_id] == 1, f"Job {job_id} was processed {processed_jobs[job_id]} times!"
 
     # Additionally, verify that all jobs in the DB are 'done'
+    db_session.expire_all()
     jobs_in_db = db_session.query(Job).filter(Job.queue_id == queue.id).all()
     assert all(job.status == JobStatus.done for job in jobs_in_db)
