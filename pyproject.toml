@@ -40,6 +40,7 @@ dependencies = [
 dev = [
   "pytest>=7.0",
   "httpx>=0.27",
+  "ruff>=0.6",
 ]
 
 [project.urls]
@@ -59,5 +60,43 @@ exclude = ["/.github", "/demo_client/__pycache__"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 
-[tool.black]
-line-length = 88
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# Conventions: docs/contributing/code-style.md
+select = [
+  "E", "W",   # pycodestyle
+  "F",        # pyflakes
+  "I",        # import sorting
+  "B",        # bugbear: likely bugs
+  "UP",       # modern syntax for our minimum Python
+  "SIM",      # simplifications
+  "RUF",      # ruff-specific checks
+  "D",        # docstrings (Google convention, below)
+  "TID252",   # no relative imports
+  "T20",      # no print() in library code
+]
+ignore = [
+  "D105",     # magic methods don't need docstrings
+  "D107",     # __init__ is documented in the class docstring
+  "E501",     # line length is handled by the formatter
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection pattern puts these calls in default arguments on purpose.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
+
+[tool.ruff.lint.per-file-ignores]
+# Docstrings are optional in tests and examples; print() is fine outside the library.
+"tests/**" = ["D", "T20"]
+"demo_client/**" = ["D", "T20"]
+"src/taskforge/cli/**" = ["T20"]
+
+[tool.ruff.format]
+docstring-code-format = true
