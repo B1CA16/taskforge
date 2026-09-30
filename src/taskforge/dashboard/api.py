@@ -1,9 +1,9 @@
-import datetime
 from fastapi import APIRouter, Depends, Query, HTTPException
+from taskforge.admin import AdminError, replay_dead_job
+from taskforge.utils.time import ensure_utc, utcnow
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from taskforge.task_queue.models import Job, JobStatus, Queue, WorkerRecord, WorkerStatus
-from taskforge.task_queue.db import enqueue_single_job
 from taskforge.dashboard.dependencies import get_db
 from taskforge.dashboard.schemas import (
     QueueStats,
@@ -14,13 +14,6 @@ from taskforge.dashboard.schemas import (
 )
 
 router = APIRouter(prefix="/api", tags=["api"])
-
-
-def _ensure_aware(dt):
-    """Ensure a datetime is timezone-aware (SQLite strips tzinfo)."""
-    if dt is not None and dt.tzinfo is None:
-        return dt.replace(tzinfo=datetime.UTC)
-    return dt
 
 
 def _job_to_summary(job: Job, queue_name: str) -> JobSummary:
@@ -43,16 +36,16 @@ def _job_to_summary(job: Job, queue_name: str) -> JobSummary:
 
 
 def _worker_to_summary(worker: WorkerRecord) -> WorkerSummary:
-    now = datetime.datetime.now(datetime.UTC)
+    now = utcnow()
     effective_status = worker.status.value
     if worker.status == WorkerStatus.online and worker.last_heartbeat_at:
-        if (now - _ensure_aware(worker.last_heartbeat_at)).total_seconds() > 60:
+        if (now - ensure_utc(worker.last_heartbeat_at)).total_seconds() > 60:
             effective_status = "lost"
 
     uptime = None
     if worker.started_at:
-        end = _ensure_aware(worker.stopped_at) or now
-        uptime = (end - _ensure_aware(worker.started_at)).total_seconds()
+        end = ensure_utc(worker.stopped_at) or now
+        uptime = (end - ensure_utc(worker.started_at)).total_seconds()
 
     return WorkerSummary(
         id=worker.id,
@@ -96,13 +89,13 @@ def get_overview(db: Session = Depends(get_db)):
     total_dead = sum(q.dead for q in queues)
 
     # Online workers
-    now = datetime.datetime.now(datetime.UTC)
+    now = utcnow()
     workers_stmt = select(WorkerRecord).where(WorkerRecord.status == WorkerStatus.online)
     online_workers = db.execute(workers_stmt).scalars().all()
     # Only count workers with recent heartbeats
     total_workers_online = sum(
         1 for w in online_workers
-        if w.last_heartbeat_at and (now - _ensure_aware(w.last_heartbeat_at)).total_seconds() <= 60
+        if w.last_heartbeat_at and (now - ensure_utc(w.last_heartbeat_at)).total_seconds() <= 60
     )
 
     # Recent failures (last 10 dead/failed jobs)
@@ -208,29 +201,18 @@ def get_job(job_id: str, db: Session = Depends(get_db)):
 
 @router.post("/jobs/{job_id}/replay", response_model=JobSummary)
 def replay_job(job_id: str, db: Session = Depends(get_db)):
-    """Re-enqueue a dead job as a new pending job."""
-    job = db.get(Job, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    """Re-enqueue a dead job as a new pending job.
 
-    if job.status != JobStatus.dead:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Only dead jobs can be replayed. Current status: {job.status.value}",
-        )
+    Returns 404 if the job doesn't exist, 400 if it isn't dead, and 409 if it
+    was already replayed.
+    """
+    try:
+        replay = replay_dead_job(job_id)
+    except AdminError as e:
+        status_code = {"not_found": 404, "not_dead": 400, "already_replayed": 409}[e.code]
+        raise HTTPException(status_code=status_code, detail=str(e))
 
-    queue = db.get(Queue, job.queue_id)
-    queue_name = queue.name if queue else "default_queue"
-
-    new_job = enqueue_single_job(
-        job_type=job.type,
-        payload=job.payload,
-        queue_name=queue_name,
-        max_attempts=job.max_attempts,
-        tags=job.tags,
-    )
-
-    return _job_to_summary(new_job, queue_name)
+    return _job_to_summary(replay.new_job, replay.queue_name)
 
 
 @router.get("/workers", response_model=list[WorkerSummary])

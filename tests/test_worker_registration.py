@@ -40,7 +40,7 @@ def test_worker_deregistration(db_session):
 
     # Deregister
     worker.status = WorkerStatus.offline
-    worker.stopped_at = datetime.datetime.now(datetime.UTC)
+    worker.stopped_at = datetime.datetime.now(datetime.timezone.utc)
     db_session.commit()
     db_session.refresh(worker)
 
@@ -63,7 +63,7 @@ def test_worker_heartbeat_update(db_session):
     initial_heartbeat = worker.last_heartbeat_at
 
     # Simulate heartbeat update
-    new_heartbeat = datetime.datetime.now(datetime.UTC)
+    new_heartbeat = datetime.datetime.now(datetime.timezone.utc)
     worker.last_heartbeat_at = new_heartbeat
     db_session.commit()
     db_session.refresh(worker)

@@ -1,18 +1,28 @@
+from collections.abc import Iterator
 from contextlib import contextmanager
-from taskforge.db.base import engine, SessionLocal
-from taskforge.task_queue.models import Base
+
+from sqlalchemy.orm import Session
+
+from taskforge.db.base import get_engine, get_session_factory
 
 
 @contextmanager
-def get_session():
-    """
-    Returns a new SQLAlchemy session.
+def get_session() -> Iterator[Session]:
+    """Yield a new SQLAlchemy session and close it afterwards.
+
     Usage:
         with get_session() as session:
             ...
     """
-    session = SessionLocal()
+    session = get_session_factory()()
     try:
         yield session
     finally:
         session.close()
+
+
+def __getattr__(name: str):
+    # Backwards compatibility for ``from taskforge.db.connection import engine``.
+    if name == "engine":
+        return get_engine()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

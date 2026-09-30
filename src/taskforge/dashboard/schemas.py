@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel
 from datetime import datetime
 
@@ -30,7 +32,7 @@ class JobSummary(BaseModel):
 
 class JobDetail(JobSummary):
     payload: dict | list | None = None
-    result: dict | list | None = None
+    result: Any = None  # whatever the job returned: any JSON value
     error_message: str | None = None
     locked_by: str | None = None
     locked_at: datetime | None = None

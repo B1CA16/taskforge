@@ -1,37 +1,44 @@
 import inspect
 import logging
 import traceback
-from typing import Any, Tuple, Callable, Optional
+from typing import Any, Optional, Tuple
+
 from taskforge.jobs.registry import get_job_func
 from taskforge.task_queue.models import Job
-from taskforge.config.logging import setup_logging
 
-setup_logging()
 logger = logging.getLogger(__name__)
 
 
 def execute_job(
     job: Job, logger: Optional[logging.Logger] = None
 ) -> Tuple[Any, str | None]:
-    """
-    Executes a job and returns the result and any error message.
+    """Run the function registered for ``job.type`` with the job's payload.
+
+    A ``dict`` payload is passed as keyword arguments and a ``list`` as
+    positional arguments. If the function declares a ``logger`` parameter, the
+    job-scoped logger is injected.
+
+    Returns:
+        ``(result, None)`` on success, or ``(None, traceback_text)`` if the job
+        raised. Exceptions never propagate to the caller.
     """
     try:
         job_func = get_job_func(job.type)
         payload = job.payload or {}
         sig = inspect.signature(job_func)
 
-        kwargs = {}
-        args = []
+        kwargs: dict[str, Any] = {}
+        args: list[Any] = []
 
+        # Copy the payload: it is the ORM attribute, and mutating it (e.g. by
+        # injecting the logger below) would leak into the persisted job row.
         if isinstance(payload, dict):
-            kwargs = payload
+            kwargs = dict(payload)
         elif isinstance(payload, list):
-            args = payload
+            args = list(payload)
         else:
             raise TypeError(f"Unsupported payload type: {type(payload)}")
 
-        # If the function accepts a 'logger' keyword argument, pass it in
         if "logger" in sig.parameters:
             kwargs["logger"] = logger
 

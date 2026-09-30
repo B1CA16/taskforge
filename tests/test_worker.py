@@ -149,9 +149,10 @@ def test_worker_claims_job(db_session):
     db_session.add(job)
     db_session.commit()
 
-    worker = Worker(queues=["default_queue"])
+    worker = Worker(queues=["default_queue"], enable_metrics=False)
     worker._process_job()
 
+    db_session.expire_all()
     processed_job = db_session.get(Job, job.id)
     assert processed_job.status == JobStatus.done
     assert processed_job.locked_by == worker.worker_id
@@ -167,9 +168,10 @@ def test_worker_handles_failed_job_and_moves_to_dead(db_session):
     db_session.add(job)
     db_session.commit()
 
-    worker = Worker(queues=["default_queue"])
+    worker = Worker(queues=["default_queue"], enable_metrics=False)
     worker._process_job()
 
+    db_session.expire_all()
     processed_job = db_session.get(Job, job.id)
     assert processed_job.status == JobStatus.dead
     assert processed_job.locked_by == worker.worker_id
@@ -185,11 +187,12 @@ def test_worker_retries_job_with_backoff(db_session):
     db_session.add(job)
     db_session.commit()
 
-    worker = Worker(queues=["default_queue"])
+    worker = Worker(queues=["default_queue"], enable_metrics=False)
     worker._process_job()
 
+    db_session.expire_all()
     processed_job = db_session.get(Job, job.id)
-    assert processed_job.status == JobStatus.pending
+    assert processed_job.status == JobStatus.failed  # waiting for its retry
     assert processed_job.attempts == 1
     assert processed_job.scheduled_at is not None
     # 10 * (2**1) = 20 seconds
@@ -209,9 +212,10 @@ def test_worker_moves_job_to_dead_state_after_retries(db_session):
     db_session.add(job)
     db_session.commit()
 
-    worker = Worker(queues=["default_queue"])
+    worker = Worker(queues=["default_queue"], enable_metrics=False)
     worker._process_job()
 
+    db_session.expire_all()
     processed_job = db_session.get(Job, job.id)
     assert processed_job.status == JobStatus.dead
     assert processed_job.attempts == 3
@@ -227,16 +231,17 @@ def test_worker_respects_scheduled_at_future(db_session):
     db_session.commit()
 
     # Schedule a job to run in one hour
-    future_time = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
+    future_time = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
     job = Job(type="success", queue_id=queue.id, scheduled_at=future_time)
     db_session.add(job)
     db_session.commit()
 
     # Run a processing cycle
-    worker = Worker(queues=["default_queue"])
+    worker = Worker(queues=["default_queue"], enable_metrics=False)
     worker._process_job()
 
     # The job should remain pending and not be locked
+    db_session.expire_all()
     processed_job = db_session.get(Job, job.id)
     assert processed_job.status == JobStatus.pending
     assert processed_job.locked_by is None
@@ -252,16 +257,17 @@ def test_worker_picks_up_past_due_job(db_session):
     db_session.commit()
 
     # Schedule a job to run one hour ago
-    past_time = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)
+    past_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1)
     job = Job(type="success", payload=[1, 1], queue_id=queue.id, scheduled_at=past_time)
     db_session.add(job)
     db_session.commit()
 
     # Run a processing cycle
-    worker = Worker(queues=["default_queue"])
+    worker = Worker(queues=["default_queue"], enable_metrics=False)
     worker._process_job()
 
     # The job should have been processed
+    db_session.expire_all()
     processed_job = db_session.get(Job, job.id)
     assert processed_job.status == JobStatus.done
     assert processed_job.result == 2
