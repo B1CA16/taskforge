@@ -1,12 +1,13 @@
-import pytest
-import logging
 import datetime
-from taskforge.cli.main import view_stats, view_history, replay_job, view_workers
+import logging
+
+from taskforge.cli.main import replay_job, view_history, view_stats, view_workers
 from taskforge.task_queue.models import Job, JobStatus, Queue, WorkerRecord, WorkerStatus
 
 
 class MockArgs:
     """Simple mock for argparse args."""
+
     def __init__(self, **kwargs):
         for key, value in kwargs.items():
             setattr(self, key, value)
@@ -45,9 +46,7 @@ def test_view_stats_empty(db_session, caplog):
     with caplog.at_level(logging.INFO):
         view_stats()
 
-    assert any(
-        r.__dict__.get("event") == "StatsEmpty" for r in caplog.records
-    )
+    assert any(r.__dict__.get("event") == "StatsEmpty" for r in caplog.records)
 
 
 def test_view_history_all(db_session, caplog):
@@ -138,9 +137,14 @@ def test_replay_dead_job(db_session, caplog):
 
     # Verify the new job exists in DB
     from sqlalchemy import select
-    new_jobs = db_session.execute(
-        select(Job).where(Job.status == JobStatus.pending, Job.type == "failing_task")
-    ).scalars().all()
+
+    new_jobs = (
+        db_session.execute(
+            select(Job).where(Job.status == JobStatus.pending, Job.type == "failing_task")
+        )
+        .scalars()
+        .all()
+    )
     assert len(new_jobs) == 1
     assert new_jobs[0].payload == {"key": "value"}
     assert new_jobs[0].tags == {"env": "test", "taskforge.replayed_from": dead_job.id}
@@ -166,7 +170,8 @@ def test_replay_same_dead_job_twice_is_refused(db_session, caplog):
         replay_job(MockArgs(job_id=dead_job.id))
 
     assert any(r.__dict__.get("event") == "ReplayAlreadyReplayed" for r in caplog.records)
-    from sqlalchemy import select, func
+    from sqlalchemy import func, select
+
     pending = db_session.execute(
         select(func.count(Job.id)).where(Job.status == JobStatus.pending)
     ).scalar()
@@ -187,9 +192,7 @@ def test_replay_non_dead_job_fails(db_session, caplog):
     with caplog.at_level(logging.ERROR):
         replay_job(args)
 
-    assert any(
-        r.__dict__.get("event") == "ReplayInvalidStatus" for r in caplog.records
-    )
+    assert any(r.__dict__.get("event") == "ReplayInvalidStatus" for r in caplog.records)
 
 
 def test_replay_nonexistent_job_fails(db_session, caplog):
@@ -198,9 +201,7 @@ def test_replay_nonexistent_job_fails(db_session, caplog):
     with caplog.at_level(logging.ERROR):
         replay_job(args)
 
-    assert any(
-        r.__dict__.get("event") == "ReplayNotFound" for r in caplog.records
-    )
+    assert any(r.__dict__.get("event") == "ReplayNotFound" for r in caplog.records)
 
 
 def test_view_workers_shows_registered_workers(db_session, caplog):
@@ -259,6 +260,4 @@ def test_view_workers_empty(db_session, caplog):
     with caplog.at_level(logging.INFO):
         view_workers()
 
-    assert any(
-        r.__dict__.get("event") == "WorkersEmpty" for r in caplog.records
-    )
+    assert any(r.__dict__.get("event") == "WorkersEmpty" for r in caplog.records)

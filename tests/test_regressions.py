@@ -1,4 +1,4 @@
-"""Regression tests for bugs found in the 2026-09 audit (docs/revamp/01-AUDIT.md)."""
+"""Regression tests for bugs found in the 2026-09 audit (docs/revamp/01-audit.md)."""
 
 import datetime
 import os
@@ -54,14 +54,18 @@ def test_import_has_no_side_effects(tmp_path):
         "import taskforge, taskforge.worker.worker, taskforge.cli.main, taskforge.dashboard.app\n"
         "assert logging.getLogger().handlers == [handler], logging.getLogger().handlers\n"
     )
-    env = {k: v for k, v in os.environ.items() if k not in ("DATABASE_URL", "TASKFORGE_DATABASE_URL")}
+    env = {
+        k: v for k, v in os.environ.items() if k not in ("DATABASE_URL", "TASKFORGE_DATABASE_URL")
+    }
     # Run from an empty directory so no .env file can be found.
-    result = subprocess.run([sys.executable, "-c", code], cwd=tmp_path, env=env, capture_output=True, text=True)
+    result = subprocess.run(
+        [sys.executable, "-c", code], cwd=tmp_path, env=env, capture_output=True, text=True
+    )
     assert result.returncode == 0, result.stderr
 
 
 def test_first_session_in_a_fresh_process_does_not_deadlock(tmp_path):
-    """The lazy engine/session-factory initialisation must not self-deadlock."""
+    """The lazy engine/session-factory initialization must not self-deadlock."""
     code = (
         "from sqlalchemy import text\n"
         "from taskforge.db.connection import get_session\n"
@@ -70,7 +74,12 @@ def test_first_session_in_a_fresh_process_does_not_deadlock(tmp_path):
     )
     env = {**os.environ, "TASKFORGE_DATABASE_URL": f"sqlite:///{tmp_path / 'test.db'}"}
     result = subprocess.run(
-        [sys.executable, "-c", code], cwd=tmp_path, env=env, capture_output=True, text=True, timeout=30
+        [sys.executable, "-c", code],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     assert result.returncode == 0, result.stderr
 
@@ -90,7 +99,11 @@ def test_init_db_is_idempotent_and_keeps_data(db_session):
 
 @pytest.mark.parametrize(
     "url",
-    ["postgresql://u:p@localhost/production", "postgresql://u:p@localhost/app", "sqlite:///taskforge.db"],
+    [
+        "postgresql://u:p@localhost/production",
+        "postgresql://u:p@localhost/app",
+        "sqlite:///taskforge.db",
+    ],
 )
 def test_suite_refuses_non_test_databases(url):
     with pytest.raises(pytest.UsageError):
@@ -166,7 +179,7 @@ def test_worker_drains_backlog_without_sleeping_between_jobs(db_session):
     db_session.add_all([Job(type="ok", queue_id=queue.id) for _ in range(10)])
     db_session.commit()
 
-    # With a 1 s sleep after every job (the old behaviour) this takes 10+ s.
+    # With a 1 s sleep after every job (the old behavior) this takes 10+ s.
     worker = _worker(poll_interval=5)
     thread = threading.Thread(target=worker.run)
     thread.start()

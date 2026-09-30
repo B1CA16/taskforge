@@ -1,5 +1,5 @@
 import pytest
-from prometheus_client import CollectorRegistry, Counter, Histogram, Gauge
+from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
 
 
 def test_jobs_processed_counter_increments():

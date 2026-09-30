@@ -23,7 +23,7 @@ Some work is too slow to do inside a web request: sending an email, resizing an 
 - **CLI** for stats, history, workers, dead-letter and replay.
 - **Graceful shutdown.** On Ctrl+C, SIGTERM or Ctrl+Break, the worker finishes the current job first.
 
-Not implemented yet: reclaiming jobs from crashed workers, concurrency within a worker, priorities, cron schedules, dashboard authentication. See the [roadmap](https://github.com/B1CA16/taskforge/blob/main/docs/revamp/03-PRIORITIES.md).
+Not implemented yet: reclaiming jobs from crashed workers, concurrency within a worker, priorities, cron schedules, dashboard authentication. See the [roadmap](https://github.com/B1CA16/taskforge/blob/main/docs/revamp/03-priorities.md).
 
 ## Requirements
 
@@ -32,11 +32,19 @@ Not implemented yet: reclaiming jobs from crashed workers, concurrency within a 
 
 ## Installation
 
-```powershell
+```bash
 pip install --pre taskforge-queue
 ```
 
 Or from source, for development:
+
+```bash
+git clone https://github.com/B1CA16/taskforge.git
+cd taskforge
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
 
 ```powershell
 git clone https://github.com/B1CA16/taskforge.git
@@ -46,27 +54,23 @@ python -m venv .venv
 pip install -e ".[dev]"
 ```
 
-<details><summary>macOS / Linux</summary>
-
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-```
-</details>
-
 ## Quick start
 
-**1. Point TaskForge at a database.** Copy `.env.example` to `.env` and set the URL, or set it for the current PowerShell session:
+**1. Point TaskForge at a database.** Copy `.env.example` to `.env` and set the URL there, or set it for the current shell session:
+
+```bash
+export TASKFORGE_DATABASE_URL="postgresql+psycopg://postgres:postgres@127.0.0.1:5435/postgres"
+```
 
 ```powershell
 $env:TASKFORGE_DATABASE_URL = "postgresql+psycopg://postgres:postgres@127.0.0.1:5435/postgres"
 ```
 
-No Postgres yet? See [docs/DOCKER_PG_SETUP.md](https://github.com/B1CA16/taskforge/blob/main/docs/DOCKER_PG_SETUP.md).
+No Postgres yet? See [docs/docker-postgres-setup.md](https://github.com/B1CA16/taskforge/blob/main/docs/docker-postgres-setup.md).
 
 **2. Create the tables** (safe to re-run; it never drops anything):
 
-```powershell
+```bash
 python -m taskforge.cli.main init-db
 ```
 
@@ -74,6 +78,7 @@ python -m taskforge.cli.main init-db
 
 ```python
 from taskforge.jobs.registry import register
+
 
 @register("add_numbers")
 def add_numbers(a: int, b: int, logger=None):
@@ -84,14 +89,14 @@ def add_numbers(a: int, b: int, logger=None):
 
 **4. Start a worker**, in terminal 1:
 
-```powershell
-python demo_client\run_worker.py
+```bash
+python demo_client/run_worker.py
 ```
 
 **5. Enqueue jobs**, in terminal 2:
 
-```powershell
-python demo_client\enqueue_job.py
+```bash
+python demo_client/enqueue_job.py
 ```
 
 The worker picks the jobs up immediately. One of the demo jobs fails on purpose, so you'll also see a retry being scheduled and a job moving to the dead-letter queue.
@@ -113,10 +118,10 @@ from datetime import datetime, timedelta, timezone
 from taskforge.task_queue.db import enqueue_single_job
 
 enqueue_single_job(
-    "add_numbers",                     # job_type used in @register
-    {"a": 1, "b": 2},                  # dict -> kwargs, list -> args
+    "add_numbers",  # job_type used in @register
+    {"a": 1, "b": 2},  # dict -> kwargs, list -> args
     queue_name="default_queue",
-    max_attempts=5,                    # overrides DEFAULT_MAX_ATTEMPTS
+    max_attempts=5,  # overrides DEFAULT_MAX_ATTEMPTS
     scheduled_at=datetime.now(timezone.utc) + timedelta(minutes=5),  # naive = UTC
     tags={"team": "billing"},
 )
@@ -157,7 +162,7 @@ A failed job is retried after `10 × 2^attempt` seconds (20 s, 40 s, …) and mo
 
 ## CLI
 
-```powershell
+```bash
 python -m taskforge.cli.main init-db                   # create missing tables
 python -m taskforge.cli.main stats                     # job counts per queue and status
 python -m taskforge.cli.main history --status dead --tag team=billing --limit 50
@@ -168,17 +173,18 @@ python -m taskforge.cli.main replay <job_id>           # re-enqueue a dead job (
 
 ## Dashboard
 
-```powershell
-python demo_client\run_dashboard.py
+```bash
+python demo_client/run_dashboard.py
 ```
 
-Open http://127.0.0.1:8000. The JSON API is at `/api/*` and the interactive docs at `/docs`.
+Open <http://127.0.0.1:8000>. The JSON API is at `/api/*` and the interactive docs at `/docs`.
 
-> ⚠️ The dashboard has **no authentication yet**. Keep it on `127.0.0.1` or behind a proxy that handles auth.
+> **Warning:** the dashboard has no authentication yet. Keep it on `127.0.0.1` or behind a proxy that handles auth.
 
 ## Metrics
 
 Each worker serves Prometheus metrics at `http://<host>:9464/metrics`:
+
 - `taskforge_jobs_processed_total{queue,job_type,status}`
 - `taskforge_jobs_enqueued_total{queue,job_type}` (counted in the process that enqueues)
 - `taskforge_job_execution_duration_seconds`
@@ -191,12 +197,12 @@ If the port is already taken (for example, by a second worker on the same machin
 
 The test suite runs against a disposable Postgres in Docker (port 5436, data in memory):
 
-```powershell
+```bash
 docker compose up -d test-db
 pytest
 ```
 
-The suite **drops all tables**, so it refuses to run unless the database name contains `test`. Point it elsewhere with `TASKFORGE_TEST_DATABASE_URL`. See [TESTING_STRATEGY.md](https://github.com/B1CA16/taskforge/blob/main/TESTING_STRATEGY.md).
+The suite **drops all tables**, so it refuses to run unless the database name contains `test`. Point it elsewhere with `TASKFORGE_TEST_DATABASE_URL`. See [docs/contributing/testing.md](https://github.com/B1CA16/taskforge/blob/main/docs/contributing/testing.md).
 
 ## License
 

@@ -1,0 +1,4 @@
+// Files markdownlint-cli2 skips; the rules themselves are in .markdownlint.jsonc
+{
+  "ignores": [".venv/**", ".pytest_cache/**", "node_modules/**", "**/*.egg-info/**"]
+}

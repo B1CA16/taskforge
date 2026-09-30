@@ -1,4 +1,4 @@
-# TaskForge — Current-State Audit
+# TaskForge — Current-state audit
 
 _Audit date: 2026-09-25_
 _**Baseline: `origin/main` @ `f3f0ad0`** (Apr 22 2026). The local clone was one commit behind. Its uncommitted changes (`web/`, `monitoring/`, …) are an older, abandoned experiment and are **not** audited here, except where noted in §7._
@@ -8,6 +8,7 @@ _**Baseline: `origin/main` @ `f3f0ad0`** (Apr 22 2026). The local clone was one 
 TaskForge has a sound core: a Postgres queue using `SKIP LOCKED`, retries with backoff, a dead-letter state, workers registered in the DB with heartbeats, per-worker Prometheus metrics, job tags, and a server-rendered HTMX dashboard. It has 65 tests. The architecture choices are the right ones.
 
 **It is not yet shippable as a library.** Here's why:
+
 - `pyproject.toml` says **1.0.0 / Production/Stable**.
 - The wheel **doesn't include the dashboard templates**, so the dashboard 404s after `pip install`.
 - The PyPI name `taskforge` **is taken**.
@@ -31,7 +32,7 @@ Every one of these is fixable in days, not weeks.
 | Dashboard | `dashboard/app.py`, `api.py`, `schemas.py`, `templates/*` | FastAPI + Jinja2 + HTMX. Pages: overview (5 s auto-refresh), jobs (filters, pagination), job detail (replay). JSON API: `/api/overview`, `/api/jobs` (tag filters), `/api/jobs/{id}`, `/api/jobs/{id}/replay`, `/api/workers`, `/api/queues`. Pydantic response models. |
 | CLI | `cli/main.py` | argparse: `dead-letter`, `stats`, `history` (incl. tags), `replay`, `workers`. Output goes through the logger. |
 | Config | `config/settings.py`, `config/logging.py`, `db/base.py` | Env vars only (`DATABASE_URL`, `DEFAULT_MAX_ATTEMPTS`). |
-| Docs | `README.md`, `ROADMAP.md` (Phases 0–11), `TESTING_STRATEGY.md`, `docs/architecture.md`, `docs/DOCKER_PG_SETUP.md` | Well written; several claims are out of date or untrue (§4). |
+| Docs | `README.md`, `docs/roadmap.md` (Phases 0–11), `docs/contributing/testing.md`, `docs/architecture.md`, `docs/docker-postgres-setup.md` | Well written; several claims are out of date or untrue (§4). |
 | Tests | 11 files, 65 tests | Dashboard API tests via TestClient; worker registration; tags; metrics. |
 | Tooling | `[project.optional-dependencies] dev = [pytest, httpx]` | No CI, lint config beyond `[tool.black]`, type checking, pre-commit, or changelog. |
 
@@ -41,19 +42,19 @@ Every one of these is fixable in days, not weeks.
 
 ## 2. Correctness bugs
 
-Severity: 🔴 breaks core behaviour / data · 🟠 wrong results or bad failure mode · 🟡 latent.
+Severity: 🔴 breaks core behavior / data · 🟠 wrong results or bad failure mode · 🟡 latent.
 
 | # | Sev | Where | Problem |
 |---|---|---|---|
-| B1 | 🔴 | `worker/worker.py` `_process_job` | **Stuck jobs.** If the worker process dies (kill -9, OOM, deploy) or the post-execution `commit` fails (e.g. a non-JSON-serialisable return value), the job stays `running` and locked **forever**. Heartbeats are recorded, and the dashboard *displays* "lost" after 60 s, but **nothing reclaims the lost worker's jobs**. `architecture.md` says jobs are reclaimed after a lock timeout. |
+| B1 | 🔴 | `worker/worker.py` `_process_job` | **Stuck jobs.** If the worker process dies (kill -9, OOM, deploy) or the post-execution `commit` fails (e.g. a non-JSON-serializable return value), the job stays `running` and locked **forever**. Heartbeats are recorded, and the dashboard _displays_ "lost" after 60 s, but **nothing reclaims the lost worker's jobs**. `architecture.md` says jobs are reclaimed after a lock timeout. |
 | B2 | 🔴 | `tests/conftest.py` | The fixture runs `drop_all()` on **whatever `DATABASE_URL` points to**. Running `pytest` with a real DB configured wipes it. |
 | B3 | 🔴 | `task_queue/test_db.py` | **Ships in the wheel** (verified) and **drops all tables on import**. |
-| B4 | 🟠 | `worker/worker.py` `run()` | `time.sleep(1)` runs after *every* iteration, even right after processing a job. That caps throughput at about 1 job/s per worker. |
+| B4 | 🟠 | `worker/worker.py` `run()` | `time.sleep(1)` runs after _every_ iteration, even right after processing a job. That caps throughput at about 1 job/s per worker. |
 | B5 | 🟠 | `worker/worker.py` | `max_concurrency=10` is accepted but never used. One job at a time. |
 | B6 | 🟠 | `worker/worker.py` `run()` / `stop()` | No signal handling. `SIGTERM` (Docker, systemd, K8s) kills the process without `_deregister()` or draining. Combined with B1, **every deploy can strand a job**. |
 | B7 | 🟠 | `models.py` + claim SQL | Naive `DateTime` columns; Python writes aware UTC, SQL compares with `NOW()` (server local time). On a non-UTC Postgres, scheduled/retried jobs run hours early or late. The `_ensure_aware()` helpers in the dashboard work around the symptom. |
 | B8 | 🟠 | `models.py`, `worker.py`, `dashboard/*` | `datetime.UTC` needs Python ≥ 3.11, but `requires-python = ">=3.10"`. It crashes on 3.10. |
-| B9 | 🟠 | `metrics/server.py` | Default metrics port **9090 is Prometheus's own default port**. A second worker *process* on the same host crashes with `OSError: address in use`. No `--metrics-port` in any CLI. |
+| B9 | 🟠 | `metrics/server.py` | Default metrics port **9090 is Prometheus's own default port**. A second worker _process_ on the same host crashes with `OSError: address in use`. No `--metrics-port` in any CLI. |
 | B10 | 🟠 | `worker/worker.py` `_refresh_queue_depth` | **Every** worker publishes `taskforge_queue_depth` for **all** queues, so `sum()` in Grafana multiplies depth by the number of workers. A status that drops to 0 keeps its last non-zero value, because the gauge is never reset. |
 | B11 | 🟠 | `metrics/collectors.py` | `taskforge_jobs_enqueued_total` is defined but never incremented. |
 | B12 | 🟠 | `dashboard/api.py` `replay_job`, `cli/main.py` | Replay creates a **new** job but leaves the original `dead` with no link between them. Replaying the same job twice runs it twice, and the dead list never shrinks. |
@@ -74,9 +75,9 @@ Severity: 🔴 breaks core behaviour / data · 🟠 wrong results or bad failure
 | H1 | `db/base.py` creates the engine **at import time** and raises if `DATABASE_URL` is unset. It also calls `load_dotenv()` on import. | You can't `import taskforge`, run `--help`, or build API docs without a DB. Loading `.env` silently changes the host app's environment. |
 | H2 | `setup_logging()` runs on import in `config/logging.py`, `worker.py`, `executor.py`, `cli/main.py`, and **clears the root logger's handlers**. | Importing TaskForge into a Django/FastAPI app destroys the host app's logging. This is a deal-breaker for a library. |
 | H3 | Only a global engine and a global registry. | One DB per process; hard to test in isolation. |
-| H4 | Enqueue opens its **own** session and commits. | You lose the main advantage of a DB queue: *transactional enqueue*. |
+| H4 | Enqueue opens its **own** session and commits. | You lose the main advantage of a DB queue: _transactional enqueue_. |
 | H5 | FastAPI, uvicorn, jinja2, python-multipart and prometheus-client are **hard** dependencies. | Anyone who only wants a queue pulls in a web stack. |
-| H6 | The dependency is `psycopg[binary]` (v3), but `DOCKER_PG_SETUP.md` uses `postgresql+psycopg2://`. | Following the guide fails with `ModuleNotFoundError: psycopg2`. |
+| H6 | The dependency is `psycopg[binary]` (v3), but `docker-postgres-setup.md` uses `postgresql+psycopg2://`. | Following the guide fails with `ModuleNotFoundError: psycopg2`. |
 | H7 | Replay, stats and worker-status logic are duplicated between `cli/main.py`, `dashboard/app.py` and `dashboard/api.py` (`_ensure_aware` and the "lost if > 60 s" rule are copy-pasted). | Fixes land in one place and not the others. |
 | H8 | Sparse type hints, no `py.typed`. | No editor completion or mypy support for users. |
 | H9 | There's no worker entry point. Users write their own `run_worker.py` with `sys.path` hacks (see `demo_client/`). | This is the first thing a new user hits. |
@@ -87,9 +88,9 @@ Severity: 🔴 breaks core behaviour / data · 🟠 wrong results or bad failure
 
 | Claim | Where | Reality |
 |---|---|---|
-| "Tests use an in-memory SQLite database" | `TESTING_STRATEGY.md` | Tests use `DATABASE_URL`, and the worker only works on Postgres. |
+| "Tests use an in-memory SQLite database" | `docs/contributing/testing.md` | Tests use `DATABASE_URL`, and the worker only works on Postgres. |
 | "Jobs can be reclaimed after a lock timeout" | `architecture.md` | Not implemented (B1). |
-| "Phase 5 ✅ COMPLETED — prioritisation, cron, plugin system, distributed workers" | `ROADMAP.md` | Priorities, cron and plugins don't exist. Phase 8 even says it "enhances Phase 5's basic prioritisation". |
+| "Phase 5 ✅ COMPLETED — prioritization, cron, plugin system, distributed workers" | `docs/roadmap.md` | Priorities, cron and plugins don't exist. Phase 8 even says it "enhances Phase 5's basic prioritization". |
 | "Not yet packaged for PyPI", `pip install -r requirements.txt`, `your-username` URL | `README.md` | No requirements.txt; placeholder URL; the dashboard/metrics/tags features aren't documented in the README at all. |
 | "Development Status :: 5 - Production/Stable", 1.0.0 (also `FastAPI(version="1.0.0")`) | `pyproject.toml`, `dashboard/app.py` | Alpha. |
 | Last commit message "schedule conflicts, instructor notes, phone, bulk attendance…" | git history | Wrong message (from another project). It actually added the dashboard, metrics, worker registry and tags. Worth noting in the CHANGELOG, since history can't be rewritten on a pushed `main` without force-pushing. |

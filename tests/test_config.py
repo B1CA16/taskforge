@@ -1,6 +1,5 @@
-import pytest
-from taskforge.task_queue.models import Job, Queue
 from taskforge.config import settings
+from taskforge.task_queue.models import Job, Queue
 
 
 def test_job_uses_default_max_attempts(db_session):

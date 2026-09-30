@@ -1,5 +1,4 @@
-import pytest
-from taskforge.task_queue.models import Job, Queue, JobStatus
+from taskforge.task_queue.models import Job, Queue
 
 
 def test_job_created_with_tags(db_session):
@@ -61,6 +60,7 @@ def test_filter_jobs_by_tag(db_session):
 
     # Filter for env=prod
     from sqlalchemy import select
+
     stmt = select(Job).where(Job.tags["env"].as_string() == "prod")
     results = db_session.execute(stmt).scalars().all()
 

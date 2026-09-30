@@ -1,8 +1,8 @@
-# TaskForge — Product & Technical Spec
+# TaskForge — Product & technical spec
 
 _Status: Draft v1 · 2026-09-25 · Owner: Francisco Ferreira_
 _Baseline: `origin/main` @ `f3f0ad0`. See the audit for what already exists._
-_Companion docs: [01-AUDIT.md](01-AUDIT.md) (current state) · [03-PRIORITIES.md](03-PRIORITIES.md) (ordered plan)_
+_Companion docs: [01-audit.md](01-audit.md) (current state) · [03-priorities.md](03-priorities.md) (ordered plan)_
 
 ---
 
@@ -11,6 +11,7 @@ _Companion docs: [01-AUDIT.md](01-AUDIT.md) (current state) · [03-PRIORITIES.md
 > **TaskForge: background jobs for Python that live in your Postgres. No Redis, no broker, no surprises.**
 
 ### 1.1 Who it's for
+
 Teams running a Python web app (FastAPI, Django, Flask, or plain scripts) who **already have Postgres** and want reliable background jobs without running and monitoring another piece of infrastructure.
 
 ### 1.2 Why someone would pick it over the alternatives
@@ -21,15 +22,17 @@ Teams running a Python web app (FastAPI, Django, Flask, or plain scripts) who **
 | Transactional enqueue | ✗ | ✓ | **✓ (first-class, SQLAlchemy session)** |
 | Built-in dashboard | Flower (separate) | ✗ / minimal | **✓ bundled, mountable, auth'd** |
 | Prometheus + Grafana out of the box | Plugins | ✗ | **✓ + shipped Grafana dashboard** |
-| Sync *and* async jobs | Varies | Async-first | **✓ both** |
+| Sync _and_ async jobs | Varies | Async-first | **✓ both** |
 | Mental model | Large | Medium | **Small: one table, one decorator, one CLI** |
 
 Differentiators to lean on:
+
 1. **Transactional enqueue with your own SQLAlchemy session**: "the job exists if and only if your order row exists."
 2. **Batteries-included operations**: dashboard, CLI, metrics and a Grafana board in one `pip install`.
 3. **Boring and explainable**: every state transition is one SQL statement you can read in the docs.
 
 ### 1.3 Non-goals (explicit)
+
 - Exactly-once execution. We guarantee at-least-once and document idempotency.
 - Non-Postgres production backends (MySQL, Redis). SQLite is supported **for development and tests only**.
 - Sub-millisecond latency or >50k jobs/s. Target: ~1–5k jobs/s on a modest Postgres (to be benchmarked).
@@ -53,32 +56,41 @@ Differentiators to lean on:
 ## 3. Public API (target for 0.2 → 0.4)
 
 ### 3.1 The app object: no import-time side effects
+
 ```python
 # myproject/tasks.py
 from taskforge import TaskForge
 
 tf = TaskForge(
-    database_url="postgresql+psycopg://app:pw@db/app",   # or engine=my_engine
+    database_url="postgresql+psycopg://app:pw@db/app",  # or engine=my_engine
     default_queue="default",
     default_max_attempts=3,
 )
 
-@tf.job(queue="emails", max_attempts=5, timeout=30, retry=tf.retry.exponential(base=2, max=600, jitter=True))
-def send_welcome_email(user_id: int) -> None:
-    ...
 
-@tf.job()                        # async jobs are supported the same way
-async def resize_image(path: str) -> str:
-    ...
+@tf.job(
+    queue="emails",
+    max_attempts=5,
+    timeout=30,
+    retry=tf.retry.exponential(base=2, max=600, jitter=True),
+)
+def send_welcome_email(user_id: int) -> None: ...
+
+
+@tf.job()  # async jobs are supported the same way
+async def resize_image(path: str) -> str: ...
 ```
+
 Rules:
+
 - `import taskforge` never touches the DB, env vars or logging configuration.
 - Settings come from constructor args, then `TASKFORGE_*` env vars (`TASKFORGE_DATABASE_URL`, fallback `DATABASE_URL`), then defaults. Implemented with a small dataclass (or `pydantic-settings` as an optional extra).
 - Multiple `TaskForge` instances can coexist, which is what isolated tests need.
 
 ### 3.2 Enqueueing
+
 ```python
-send_welcome_email.enqueue(user_id=42)                           # fire and forget
+send_welcome_email.enqueue(user_id=42)  # fire and forget
 send_welcome_email.enqueue(user_id=42, _delay=timedelta(minutes=5))
 send_welcome_email.enqueue(user_id=42, _run_at=dt, _priority=10, _queue="bulk")
 send_welcome_email.enqueue(user_id=42, _unique_key="welcome:42")  # dedupe while pending/running
@@ -94,11 +106,14 @@ tf.enqueue("send_welcome_email", kwargs={"user_id": 42})
 # Bulk: one INSERT … VALUES (…),(…)
 tf.enqueue_many([send_welcome_email.build(user_id=i) for i in ids])
 ```
+
 `enqueue()` returns a `JobHandle` (`id`, `status()`, `refresh()`, `result(timeout=...)`, `cancel()`).
 
 ### 3.3 Controlling retries from inside a job
+
 ```python
 from taskforge import Retry, Abort
+
 
 @tf.job()
 def call_api(url):
@@ -106,18 +121,22 @@ def call_api(url):
     if r.status_code == 429:
         raise Retry(after=int(r.headers["Retry-After"]))  # custom delay, still counts as an attempt
     if r.status_code == 404:
-        raise Abort("gone")                               # no retries, straight to dead
+        raise Abort("gone")  # no retries, straight to dead
 ```
-The job can also receive a `ctx: JobContext` parameter (`job_id`, `attempt`, `logger`, `is_cancelled()`, `heartbeat()`). This replaces the magic `logger` kwarg injection, which stays supported for compatibility.
+
+The job can also receive a `ctx: JobContext` parameter (`job_id`, `attempt`, `logger`, `is_canceled()`, `heartbeat()`). This replaces the magic `logger` kwarg injection, which stays supported for compatibility.
 
 ### 3.4 Periodic jobs
+
 ```python
-@tf.periodic(cron="*/15 * * * *", queue="maintenance")   # croniter
+@tf.periodic(cron="*/15 * * * *", queue="maintenance")  # croniter
 def cleanup_sessions(): ...
 ```
+
 Exactly one enqueue per tick across all workers, guaranteed by a unique `(schedule_name, tick_at)` constraint.
 
 ### 3.5 Framework integrations (thin, optional extras)
+
 - `taskforge.contrib.fastapi`: `mount_dashboard(app, tf, path="/taskforge", auth=...)`, plus a lifespan helper.
 - `taskforge.contrib.django`: settings-based `TaskForge`, management commands (`manage.py taskforge worker`), admin link.
 - `taskforge.contrib.flask`: extension with `init_app`.
@@ -129,13 +148,14 @@ Exactly one enqueue per tick across all workers, guaranteed by a unique `(schedu
 It evolves the existing `jobs` / `queues` / `workers` tables through the **first Alembic migration**, which renames them, converts types and backfills. All timestamps are `timestamptz`. All IDs are native `uuid` on Postgres. The schema is managed by **Alembic migrations shipped inside the package** (`taskforge db upgrade`).
 
 ### `taskforge_jobs` (tables are prefixed so they don't collide with host app tables)
+
 | Column | Type | Notes |
 |---|---|---|
 | `id` | uuid PK | |
-| `queue` | text NOT NULL | Denormalised name. Drops the join and the get-or-create race (B13). |
+| `queue` | text NOT NULL | Denormalized name. Drops the join and the get-or-create race (B13). |
 | `task_name` | text NOT NULL | |
 | `args` / `kwargs` | jsonb | Replaces the ambiguous dict-or-list `payload`. |
-| `status` | enum | `scheduled`, `pending`, `running`, `succeeded`, `failed` (awaiting retry), `dead`, `cancelled` |
+| `status` | enum | `scheduled`, `pending`, `running`, `succeeded`, `failed` (awaiting retry), `dead`, `canceled` |
 | `priority` | smallint default 0 | Higher runs first. |
 | `run_at` | timestamptz NOT NULL default now() | Replaces the nullable `scheduled_at`. |
 | `attempts`, `max_attempts` | int | |
@@ -144,7 +164,7 @@ It evolves the existing `jobs` / `queues` / `workers` tables through the **first
 | `worker_id` | uuid NULL | FK → `taskforge_workers` |
 | `started_at`, `finished_at`, `heartbeat_at` | timestamptz | Used for latency metrics and the stale-job reaper. |
 | `cancel_requested` | bool default false | Cooperative cancel of running jobs. This is missing today: `main` can't cancel at all. |
-| `result` | jsonb NULL | Must be JSON-serialisable. If it isn't, the job fails with a clear error instead of getting stuck (fixes B1). |
+| `result` | jsonb NULL | Must be JSON-serializable. If it isn't, the job fails with a clear error instead of getting stuck (fixes B1). |
 | `last_error` | jsonb NULL | `{type, message, traceback}` |
 | `parent_id` | uuid NULL | For chains/groups (phase 5). |
 | `created_at`, `updated_at` | timestamptz | |
@@ -152,18 +172,23 @@ It evolves the existing `jobs` / `queues` / `workers` tables through the **first
 **Claim index**: `CREATE INDEX … ON taskforge_jobs (queue, priority DESC, run_at) WHERE status = 'pending';`
 
 ### `taskforge_job_events` (append-only, optional, pruned)
+
 `(job_id, at, event, attempt, worker_id, detail jsonb)`. It drives the attempt timeline in the dashboard and the throughput charts, so the dashboard doesn't need Prometheus.
 
 ### `taskforge_workers`
+
 `id, hostname, pid, queues text[], concurrency, version, started_at, heartbeat_at, status (running|draining|stopped)`. This replaces inferring "workers" from `locked_by`, which can't show idle workers.
 
 ### `taskforge_queues`
+
 `name PK, paused bool, concurrency_limit int NULL, rate_limit jsonb NULL`. It's configuration only: a queue exists implicitly as soon as a job uses it.
 
 ### `taskforge_schedules`
+
 `name PK, cron, task_name, kwargs, queue, enabled, last_tick_at`.
 
 ### Retention
+
 `taskforge jobs prune --succeeded-older-than 7d --dead-older-than 30d`, which can also run as a built-in periodic job (configurable).
 
 ---
@@ -179,7 +204,7 @@ It evolves the existing `jobs` / `queues` / `workers` tables through the **first
 | **Stale-job reaper** | Every worker runs it (it's idempotent): jobs `running` with `heartbeat_at < now() - stale_after` (default 60 s) go back to `pending`/`dead` per attempts, with an event logged. It builds on the `WorkerRecord` heartbeats that already exist. Fixes B1. |
 | **Timeouts** | Sync jobs: soft timeout (the `JobContext` is flagged, logged) plus a hard timeout that marks the job failed and abandons the thread. In process mode it kills the child. Async jobs: `asyncio.timeout`. The limitations are documented honestly. |
 | **Retries** | Pluggable `RetryPolicy`: `exponential(base, max, jitter)` (default), `linear`, `fixed`, or custom callables. `Retry(after=)` and `Abort` exceptions. `retry_on=(TransientError,)` filter. |
-| **Cancellation** | Pending/scheduled jobs are cancelled immediately. Running jobs get `cancel_requested=true`, which the job can poll via `ctx.is_cancelled()`. The worker never overwrites a `cancelled` status (conditional `UPDATE … WHERE status='running'`). |
+| **Cancellation** | Pending/scheduled jobs are canceled immediately. Running jobs get `cancel_requested=true`, which the job can poll via `ctx.is_canceled()`. The worker never overwrites a `canceled` status (conditional `UPDATE … WHERE status='running'`). |
 | **Shutdown** | SIGTERM/SIGINT: stop fetching, drain running jobs for up to `--shutdown-timeout` (default 30 s), then release unfinished jobs back to `pending`. A second signal means immediate exit. Works on Windows (CTRL_C / CTRL_BREAK). |
 | **Hooks** | `on_job_start`, `on_job_success`, `on_job_failure`, `on_worker_start/stop`, used internally by metrics and tracing. Users can add their own (Sentry, etc.). |
 | **Middleware** | Optional wrapper chain around job execution (DB session per job, tenant context, tracing span). |
@@ -192,7 +217,7 @@ All state transitions are single conditional `UPDATE … WHERE id=:id AND status
 
 Built on **Typer** (or Click) + **Rich** for real tables. It's installed as the console script `taskforge`. Every command accepts `--app module:tf` (or `TASKFORGE_APP`) and `--json` for machine output.
 
-```
+```text
 taskforge worker     --app myproj.tasks:tf -q emails,default -c 8 [--processes 2]
 taskforge dashboard  --app … --host 127.0.0.1 --port 8000
 taskforge db         upgrade | downgrade | current | sql   # Alembic wrapper
@@ -204,6 +229,7 @@ taskforge schedules  list | enable | disable | run-now NAME
 taskforge stats      [--watch]
 taskforge doctor     # checks DB connectivity, migration head, clock skew, stale workers
 ```
+
 The CLI and the HTTP API both call **one service layer** (`taskforge.admin`), which fixes the duplication in H7.
 
 ---
@@ -211,6 +237,7 @@ The CLI and the HTTP API both call **one service layer** (`taskforge.admin`), wh
 ## 7. Dashboard v2
 
 ### 7.1 Packaging and security
+
 - Optional extra: `pip install "taskforge-queue[dashboard]"`.
 - It's an **ASGI sub-app** you mount in your own app, or run standalone via `taskforge dashboard`.
 - **Auth is required** unless you pass `--insecure-no-auth`. Supported: HTTP Basic, a static bearer token, or a callable `auth(request) -> bool` for SSO integration. There's also a `read_only=True` mode.
@@ -219,6 +246,7 @@ The CLI and the HTTP API both call **one service layer** (`taskforge.admin`), wh
 - Optional payload redaction (`redact_keys=["password","token"]`), and tracebacks are hidden in read-only mode.
 
 ### 7.2 Pages
+
 | Page | Content |
 |---|---|
 | **Overview** | KPI tiles (queued, running, failed/min, dead, active workers); throughput (succeeded/failed per minute, last 1 h/24 h); latency (wait time and run time p50/p95); queue-depth trend. All come from `job_events`, so there's no Prometheus dependency. |
@@ -230,16 +258,18 @@ The CLI and the HTTP API both call **one service layer** (`taskforge.admin`), wh
 | **Schedules** | Cron, next run, last run status, enable/disable, run now. |
 
 ### 7.3 Live updates
+
 Server-Sent Events (`/events`) push counters and job-state changes, backed by `LISTEN/NOTIFY`. Polling is the fallback. No WebSocket dependency.
 
 ### 7.4 REST API (versioned `/api/v1`)
+
 It mirrors the admin service: `GET /queues`, `POST /queues/{name}/pause`, `GET /jobs?cursor=…`, `GET /jobs/{id}`, `POST /jobs/{id}/retry`, `POST /jobs/{id}/cancel`, `DELETE /jobs/{id}`, `GET /workers`, `GET /stats/timeseries?metric=&window=`, `GET /schedules`. Errors return proper status codes, never a silent `[]`. The OpenAPI schema is published in the docs.
 
 ---
 
 ## 8. Observability
 
-- **Prometheus**: keep the per-worker exporter on `main` for *process* metrics (`jobs_processed_total`, duration histogram) and make the port configurable, defaulting to a free port such as `9464` instead of Prometheus's own 9090 (B9). Move *DB-derived* gauges (`taskforge_queue_depth{queue,status}`, `taskforge_oldest_pending_seconds{queue}`, `taskforge_workers{status}`) out of the workers into **one** custom `Collector` that queries the DB at scrape time. It's served by the dashboard at `/metrics` or by `taskforge metrics`, which fixes the per-worker duplication and stale values (B10). Actually increment `jobs_enqueued_total` (B11). Keep the `taskforge_` prefix and **no `worker_id`/`job_id` labels** (cardinality).
+- **Prometheus**: keep the per-worker exporter on `main` for _process_ metrics (`jobs_processed_total`, duration histogram) and make the port configurable, defaulting to a free port such as `9464` instead of Prometheus's own 9090 (B9). Move _DB-derived_ gauges (`taskforge_queue_depth{queue,status}`, `taskforge_oldest_pending_seconds{queue}`, `taskforge_workers{status}`) out of the workers into **one** custom `Collector` that queries the DB at scrape time. It's served by the dashboard at `/metrics` or by `taskforge metrics`, which fixes the per-worker duplication and stale values (B10). Actually increment `jobs_enqueued_total` (B11). Keep the `taskforge_` prefix and **no `worker_id`/`job_id` labels** (cardinality).
 - **Grafana**: ship `deploy/grafana/taskforge.json` (overview, per-queue, errors) and document the import.
 - **OpenTelemetry (extra `[otel]`)**: a span per job execution, with trace context propagated from enqueue to execution through a `trace_parent` stored with the job.
 - **Logging**: the library only calls `logging.getLogger("taskforge.*")` and never configures handlers. The **CLI** configures logging (`--log-format text|json`, `--log-level`). JSON records keep the current field names (`job_id`, `task`, `queue`, `attempt`, `worker_id`, `event`).
@@ -271,6 +301,7 @@ all       = ["taskforge-queue[postgres,dashboard,metrics,otel,cli]"]
 [project.scripts]
 taskforge = "taskforge.cli:app"
 ```
+
 - `src/taskforge/py.typed`. Static assets, templates and Alembic migrations are included in the wheel.
 - The dashboard stays on FastAPI, which is already used and gives OpenAPI plus the existing Pydantic schemas, but **only in the `dashboard` extra**. `python-multipart` is dropped unless a form needs it.
 - The minimal public surface is re-exported from `taskforge/__init__.py`: `TaskForge`, `Retry`, `Abort`, `JobContext`, `JobStatus`, `__version__`.
@@ -283,7 +314,7 @@ taskforge = "taskforge.cli:app"
 |---|---|
 | Formatting / lint | **ruff** (`ruff format` replaces black; rules: `E,F,I,B,UP,SIM,RUF,D` with Google docstrings on the public API) |
 | Types | **mypy --strict** on `src/taskforge` (tests excluded at first) |
-| Docstrings | Every public class and function: summary, Args, Returns, Raises, Example. Comments explain *why* (locking, ordering, races), not *what*. |
+| Docstrings | Every public class and function: summary, Args, Returns, Raises, Example. Comments explain _why_ (locking, ordering, races), not _what_. |
 | Tests | pytest + pytest-xdist; **real Postgres** via a CI service container (and `testcontainers` locally); SQLite only for pure-unit tests. Coverage ≥ 85% on core, reported to Codecov. Property tests (hypothesis) for the state machine; a stress test (N workers × M jobs, assert exactly-once completion and no stuck jobs); a chaos test (kill -9 a worker mid-job, assert the reaper recovers it). |
 | Safety | The test fixture refuses to run unless the DB name contains `test` (fixes B2). |
 | Pre-commit | ruff, ruff-format, mypy, end-of-file, trailing whitespace, check-toml/yaml |
@@ -311,7 +342,8 @@ Branch protection on `main`: CI green + 1 review (or self-review while solo) + s
 **Stack**: MkDocs Material + mkdocstrings (API reference from docstrings) + mkdocs-typer (CLI reference) + mike (versions) + a Mermaid diagram of the job lifecycle. It's hosted on GitHub Pages.
 
 **Information architecture** (Diátaxis):
-```
+
+```text
 Home (landing: pitch, 20-second code sample, feature grid, "why Postgres")
 Getting started
   ├─ Installation
@@ -366,7 +398,7 @@ Everything else (CLI reference, API, metrics lists) moves to the docs site.
 
 ## 14. Repository layout (target)
 
-```
+```text
 .github/            workflows/, ISSUE_TEMPLATE/, PULL_REQUEST_TEMPLATE.md, dependabot.yml
 deploy/             docker/Dockerfile, docker-compose.yml (pg + worker + dashboard + prometheus + grafana), grafana/
 docs/               mkdocs site (revamp/ docs move to docs/project/ or get archived)
@@ -398,16 +430,18 @@ CHANGELOG.md  CONTRIBUTING.md  CODE_OF_CONDUCT.md  SECURITY.md  LICENSE  README.
 ---
 
 ## 15. Community & project hygiene
+
 - `CONTRIBUTING.md` (dev setup in 3 commands: `uv sync`, `docker compose up -d db`, `pytest`), `CODE_OF_CONDUCT.md` (Contributor Covenant), `SECURITY.md` (private disclosure via GitHub advisories).
 - Issue templates (bug / feature / question) and a PR template with a checklist.
 - Labels: `good first issue`, `help wanted`, `area:*`, `breaking`.
 - GitHub Discussions for Q&A.
-- A public roadmap as a GitHub Project board generated from [03-PRIORITIES.md](03-PRIORITIES.md).
+- A public roadmap as a GitHub Project board generated from [03-priorities.md](03-priorities.md).
 - `uv` as the recommended dev workflow (`uv.lock` committed for dev only; library deps stay as ranges).
 
 ---
 
 ## 16. Success metrics
+
 - **Correctness**: zero known stuck-job scenarios; the chaos test is green in CI.
 - **DX**: from `pip install` to the first job processed in under 5 minutes, following the Quickstart verbatim (test it with someone who has never seen the project).
 - **Performance**: a published benchmark (jobs/s, p95 pickup latency) on a documented setup.

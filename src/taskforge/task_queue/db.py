@@ -1,3 +1,5 @@
+"""Enqueueing jobs."""
+
 import datetime
 
 from sqlalchemy.exc import IntegrityError
@@ -47,7 +49,7 @@ def enqueue_single_job(
             (e.g. {"env": "prod", "team": "billing"}).
 
     Returns:
-        The persisted ``Job``.
+        The persisted `Job`.
     """
     with get_session() as session:
         queue = _get_or_create_queue(session, queue_name)

@@ -1,17 +1,23 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
-from taskforge.admin import AdminError, replay_dead_job
-from taskforge.utils.time import ensure_utc, utcnow
-from sqlalchemy import select, func
+"""The dashboard's JSON API, mounted under `/api`.
+
+Endpoint docstrings double as descriptions in the interactive docs at `/docs`.
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-from taskforge.task_queue.models import Job, JobStatus, Queue, WorkerRecord, WorkerStatus
+
+from taskforge.admin import AdminError, replay_dead_job
 from taskforge.dashboard.dependencies import get_db
 from taskforge.dashboard.schemas import (
-    QueueStats,
-    JobSummary,
     JobDetail,
-    WorkerSummary,
+    JobSummary,
     OverviewStats,
+    QueueStats,
+    WorkerSummary,
 )
+from taskforge.task_queue.models import Job, JobStatus, Queue, WorkerRecord, WorkerStatus
+from taskforge.utils.time import ensure_utc, utcnow
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -38,9 +44,14 @@ def _job_to_summary(job: Job, queue_name: str) -> JobSummary:
 def _worker_to_summary(worker: WorkerRecord) -> WorkerSummary:
     now = utcnow()
     effective_status = worker.status.value
-    if worker.status == WorkerStatus.online and worker.last_heartbeat_at:
-        if (now - ensure_utc(worker.last_heartbeat_at)).total_seconds() > 60:
-            effective_status = "lost"
+    # A worker killed without shutting down still says "online"; its stale
+    # heartbeat is the only sign that it's gone.
+    if (
+        worker.status == WorkerStatus.online
+        and worker.last_heartbeat_at
+        and (now - ensure_utc(worker.last_heartbeat_at)).total_seconds() > 60
+    ):
+        effective_status = "lost"
 
     uptime = None
     if worker.started_at:
@@ -62,8 +73,10 @@ def _worker_to_summary(worker: WorkerRecord) -> WorkerSummary:
 
 @router.get("/overview", response_model=OverviewStats)
 def get_overview(db: Session = Depends(get_db)):
-    """Dashboard overview: aggregate stats, queue breakdown, recent failures."""
-    # Queue stats
+    """Return job totals, per-queue counts, online workers and the 10 latest failures.
+
+    Workers count as online only if they sent a heartbeat in the last 60 seconds.
+    """
     stmt = (
         select(Queue.name, Job.status, func.count(Job.id))
         .join(Queue, Job.queue_id == Queue.id)
@@ -81,24 +94,21 @@ def get_overview(db: Session = Depends(get_db)):
 
     queues = list(queue_map.values())
 
-    # Totals
     total_jobs = sum(q.total for q in queues)
     total_pending = sum(q.pending for q in queues)
     total_running = sum(q.running for q in queues)
     total_done = sum(q.done for q in queues)
     total_dead = sum(q.dead for q in queues)
 
-    # Online workers
     now = utcnow()
     workers_stmt = select(WorkerRecord).where(WorkerRecord.status == WorkerStatus.online)
     online_workers = db.execute(workers_stmt).scalars().all()
-    # Only count workers with recent heartbeats
     total_workers_online = sum(
-        1 for w in online_workers
+        1
+        for w in online_workers
         if w.last_heartbeat_at and (now - ensure_utc(w.last_heartbeat_at)).total_seconds() <= 60
     )
 
-    # Recent failures (last 10 dead/failed jobs)
     failures_stmt = (
         select(Job, Queue.name)
         .join(Queue, Job.queue_id == Queue.id)
@@ -107,8 +117,7 @@ def get_overview(db: Session = Depends(get_db)):
         .limit(10)
     )
     recent_failures = [
-        _job_to_summary(job, queue_name)
-        for job, queue_name in db.execute(failures_stmt).all()
+        _job_to_summary(job, queue_name) for job, queue_name in db.execute(failures_stmt).all()
     ]
 
     return OverviewStats(
@@ -134,15 +143,23 @@ def list_jobs(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
-    """List jobs with optional filtering and pagination."""
-    stmt = select(Job, Queue.name).join(Queue, Job.queue_id == Queue.id).order_by(Job.created_at.desc())
+    """List jobs, newest first, with optional filters and offset pagination.
+
+    `tag_key` alone matches jobs that have that tag; with `tag_value` the tag must
+    equal that value. Returns 400 for an unknown `status`.
+    """
+    stmt = (
+        select(Job, Queue.name)
+        .join(Queue, Job.queue_id == Queue.id)
+        .order_by(Job.created_at.desc())
+    )
 
     if status:
         try:
             status_enum = JobStatus(status)
             stmt = stmt.where(Job.status == status_enum)
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+            raise HTTPException(status_code=400, detail=f"Invalid status: {status!r}") from None
 
     if job_type:
         stmt = stmt.where(Job.type == job_type)
@@ -153,19 +170,19 @@ def list_jobs(
     if tag_key and tag_value:
         stmt = stmt.where(Job.tags[tag_key].as_string() == tag_value)
     elif tag_key:
-        stmt = stmt.where(Job.tags[tag_key] != None)
+        stmt = stmt.where(Job.tags[tag_key].is_not(None))
 
     stmt = stmt.offset(offset).limit(limit)
 
-    return [
-        _job_to_summary(job, queue_name)
-        for job, queue_name in db.execute(stmt).all()
-    ]
+    return [_job_to_summary(job, queue_name) for job, queue_name in db.execute(stmt).all()]
 
 
 @router.get("/jobs/{job_id}", response_model=JobDetail)
 def get_job(job_id: str, db: Session = Depends(get_db)):
-    """Get full details for a single job."""
+    """Return everything about one job, including payload, result and last error.
+
+    Returns 404 if the job doesn't exist.
+    """
     stmt = select(Job, Queue.name).join(Queue, Job.queue_id == Queue.id).where(Job.id == job_id)
     row = db.execute(stmt).first()
 
@@ -210,14 +227,14 @@ def replay_job(job_id: str, db: Session = Depends(get_db)):
         replay = replay_dead_job(job_id)
     except AdminError as e:
         status_code = {"not_found": 404, "not_dead": 400, "already_replayed": 409}[e.code]
-        raise HTTPException(status_code=status_code, detail=str(e))
+        raise HTTPException(status_code=status_code, detail=str(e)) from None
 
     return _job_to_summary(replay.new_job, replay.queue_name)
 
 
 @router.get("/workers", response_model=list[WorkerSummary])
 def list_workers(db: Session = Depends(get_db)):
-    """List all registered workers."""
+    """List every registered worker, newest first, including offline and lost ones."""
     stmt = select(WorkerRecord).order_by(WorkerRecord.started_at.desc())
     workers = db.execute(stmt).scalars().all()
     return [_worker_to_summary(w) for w in workers]
@@ -225,7 +242,7 @@ def list_workers(db: Session = Depends(get_db)):
 
 @router.get("/queues", response_model=list[QueueStats])
 def list_queues(db: Session = Depends(get_db)):
-    """List all queues with their job count breakdowns."""
+    """List every queue that has jobs, with job counts by status."""
     stmt = (
         select(Queue.name, Job.status, func.count(Job.id))
         .join(Queue, Job.queue_id == Queue.id)

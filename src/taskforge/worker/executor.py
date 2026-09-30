@@ -1,7 +1,9 @@
+"""Runs a single job's handler and captures its result or error."""
+
 import inspect
 import logging
 import traceback
-from typing import Any, Optional, Tuple
+from typing import Any
 
 from taskforge.jobs.registry import get_job_func
 from taskforge.task_queue.models import Job
@@ -9,17 +11,15 @@ from taskforge.task_queue.models import Job
 logger = logging.getLogger(__name__)
 
 
-def execute_job(
-    job: Job, logger: Optional[logging.Logger] = None
-) -> Tuple[Any, str | None]:
-    """Run the function registered for ``job.type`` with the job's payload.
+def execute_job(job: Job, logger: logging.Logger | None = None) -> tuple[Any, str | None]:
+    """Run the function registered for `job.type` with the job's payload.
 
-    A ``dict`` payload is passed as keyword arguments and a ``list`` as
-    positional arguments. If the function declares a ``logger`` parameter, the
+    A `dict` payload is passed as keyword arguments and a `list` as
+    positional arguments. If the function declares a `logger` parameter, the
     job-scoped logger is injected.
 
     Returns:
-        ``(result, None)`` on success, or ``(None, traceback_text)`` if the job
+        `(result, None)` on success, or `(None, traceback_text)` if the job
         raised. Exceptions never propagate to the caller.
     """
     try:

@@ -5,20 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]: 0.2.0
 
-Stabilisation release (milestone M0 in [docs/revamp/03-PRIORITIES.md](docs/revamp/03-PRIORITIES.md)).
+Stabilization release (milestone M0 in [docs/revamp/03-priorities.md](docs/revamp/03-priorities.md)).
 
 ### ⚠️ Breaking
+
 - **Distribution renamed to `taskforge-queue`** (`taskforge` is taken on PyPI). The import name is still `taskforge`.
 - **Version reset from 1.0.0 to 0.2.0 (alpha).** The API will change before 1.0.
 - **Timestamps are now `timestamptz`** (aware UTC). There are no migrations yet, so existing Postgres databases must be recreated: drop the tables, then run `python -m taskforge.cli.main init-db`.
 - **Retries use the `failed` status** (waiting for the retry) instead of going back to `pending`.
 - **The library no longer configures logging on import.** Call `taskforge.config.logging.setup_logging()` in your worker script (the CLI does it for you).
-- Registering a *different* function under an existing job name now raises `ValueError`.
+- Registering a _different_ function under an existing job name now raises `ValueError`.
 - Requires SQLAlchemy 2.0+.
 - The worker's Prometheus port default changed from 9090 (Prometheus's own port) to **9464**; override it with `TASKFORGE_METRICS_PORT`.
 - Removed `taskforge.task_queue.test_db` (it dropped all tables when imported).
 
 ### Added
+
 - `init-db` CLI command: creates missing tables and never drops anything.
 - Graceful worker shutdown on Ctrl+C, SIGTERM and Ctrl+Break (Windows); the current job always finishes, and a second signal forces exit.
 - `Worker(poll_interval=..., handle_signals=...)` options.
@@ -28,6 +30,7 @@ Stabilisation release (milestone M0 in [docs/revamp/03-PRIORITIES.md](docs/revam
 - `taskforge.__version__`.
 
 ### Fixed
+
 - The built wheel didn't include the dashboard templates, so an installed dashboard returned 404. The package now builds with hatchling and ships `templates/` and `static/`.
 - Jobs whose outcome couldn't be saved (e.g. a non-JSON-serializable return value) were left in `running` forever.
 - Workers slept 1 s after every job, capping throughput at about 1 job/s.
@@ -44,10 +47,13 @@ Stabilisation release (milestone M0 in [docs/revamp/03-PRIORITIES.md](docs/revam
 - SQLite didn't enforce foreign keys.
 
 ### Docs
+
+- Applied the conventions to the existing code and docs: docstrings on the whole public API, comments that explain why, US spelling, sentence-case headings, and lint-clean Markdown. Docs were renamed to kebab-case: `ROADMAP.md` → `docs/roadmap.md`, `TESTING_STRATEGY.md` → `docs/contributing/testing.md`, `docs/DOCKER_PG_SETUP.md` → `docs/docker-postgres-setup.md`, and `docs/revamp/*` to lowercase. Update any bookmarks.
 - Added contributor conventions: [code style](https://github.com/B1CA16/taskforge/blob/main/docs/contributing/code-style.md) (docstring templates, comments, errors, logging, glossary), [writing docs](https://github.com/B1CA16/taskforge/blob/main/docs/contributing/writing-docs.md) (voice, Markdown, page templates), `CONTRIBUTING.md` and a PR template. Ruff, EditorConfig and markdownlint are configured to match.
 - README rewritten to match what exists today (PowerShell commands, config table, job states).
-- Corrected claims in `ROADMAP.md` (Phase 5 is partial), `docs/architecture.md` (no stale-lock reclamation yet), `TESTING_STRATEGY.md` (runs on Postgres), and `docs/DOCKER_PG_SETUP.md` (psycopg 3 URL).
+- Corrected claims in `docs/roadmap.md` (Phase 5 is partial), `docs/architecture.md` (no stale-lock reclamation yet), `docs/contributing/testing.md` (runs on Postgres), and `docs/docker-postgres-setup.md` (psycopg 3 URL).
 - Added the audit, spec and priorities under `docs/revamp/`.
 
 ### Note on history
+
 Commit `f3f0ad0` has an unrelated message ("schedule conflicts, instructor notes…"). It actually added the dashboard, Prometheus metrics, worker registration with heartbeats, and job tags.

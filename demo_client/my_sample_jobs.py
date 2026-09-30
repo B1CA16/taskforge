@@ -1,11 +1,11 @@
-from taskforge.jobs.registry import register
-import time
-from typing import Optional
 import logging
+import time
+
+from taskforge.jobs.registry import register
 
 
 @register("greet_user")
-def greet_user(name: str, logger: Optional[logging.Logger] = None):
+def greet_user(name: str, logger: logging.Logger | None = None):
     """A sample job that prints a greeting and simulates work."""
     if logger:
         logger.info(f"Hello, {name}! This is a registered job speaking.")
@@ -16,7 +16,7 @@ def greet_user(name: str, logger: Optional[logging.Logger] = None):
 
 
 @register("add_numbers")
-def add_numbers(a: int, b: int, logger: Optional[logging.Logger] = None):
+def add_numbers(a: int, b: int, logger: logging.Logger | None = None):
     """A sample job that adds two numbers."""
     result = a + b
     if logger:
@@ -27,7 +27,7 @@ def add_numbers(a: int, b: int, logger: Optional[logging.Logger] = None):
 
 
 @register("fail_example")
-def fail_example(message: str, logger: Optional[logging.Logger] = None):
+def fail_example(message: str, logger: logging.Logger | None = None):
     """A sample job that is designed to fail."""
     if logger:
         logger.error(f"This job is designed to fail: {message}")
