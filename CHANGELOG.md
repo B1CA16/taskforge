@@ -44,6 +44,7 @@ Stabilisation release (milestone M0 in [docs/revamp/03-PRIORITIES.md](docs/revam
 - SQLite didn't enforce foreign keys.
 
 ### Docs
+- Added contributor conventions: [code style](https://github.com/B1CA16/taskforge/blob/main/docs/contributing/code-style.md) (docstring templates, comments, errors, logging, glossary), [writing docs](https://github.com/B1CA16/taskforge/blob/main/docs/contributing/writing-docs.md) (voice, Markdown, page templates), `CONTRIBUTING.md` and a PR template. Ruff, EditorConfig and markdownlint are configured to match.
 - README rewritten to match what exists today (PowerShell commands, config table, job states).
 - Corrected claims in `ROADMAP.md` (Phase 5 is partial), `docs/architecture.md` (no stale-lock reclamation yet), `TESTING_STRATEGY.md` (runs on Postgres), and `docs/DOCKER_PG_SETUP.md` (psycopg 3 URL).
 - Added the audit, spec and priorities under `docs/revamp/`.

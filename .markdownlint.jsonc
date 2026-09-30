@@ -1,0 +1,16 @@
+// markdownlint rules; conventions in docs/contributing/writing-docs.md
+{
+  "default": true,
+  "MD003": { "style": "atx" },              // "# Heading" style
+  "MD004": { "style": "dash" },             // "-" for bullets
+  "MD007": { "indent": 2 },
+  "MD013": false,                           // no hard wrapping
+  "MD024": { "siblings_only": true },       // repeated headings allowed in different sections (CHANGELOG)
+  "MD033": { "allowed_elements": ["details", "summary", "br", "img"] },
+  "MD040": true,                            // fenced code blocks need a language
+  "MD041": true,                            // first line is the H1 title
+  "MD046": { "style": "fenced" },
+  "MD049": { "style": "underscore" },       // _italic_
+  "MD050": { "style": "asterisk" },         // **bold**
+  "MD060": false                            // compact "|---|" table separators are fine
+}

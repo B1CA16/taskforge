@@ -38,6 +38,7 @@ Goal: `pip install taskforge-queue` works for a stranger, CI guards every change
 
 | # | Task | Spec § | Size |
 |---|---|---|---|
+| 1.0 | ✅ **Conventions**: code style (docstring templates, comments, logging, errors, glossary), writing-docs guide, CONTRIBUTING, PR template; Ruff, EditorConfig and markdownlint configured. **Next:** apply them to the existing code and docs (about 103 Ruff findings, 19 files to reformat, about 340 Markdown findings, and file renames to kebab-case). | 10 | S |
 | 1.1 | **Packaging**: hatchling + hatch-vcs, extras (`postgres`, `dashboard`, `metrics`, `cli`), package data (static, **templates: missing from the wheel today, so the installed dashboard 404s**, migrations), `py.typed`, `[project.scripts] taskforge`. | 9 | M |
 | 1.2 | **`TaskForge` app object + `@tf.job` + `.enqueue()`**, with deprecated shims for `register` / `enqueue_single_job`. Config from args → env → defaults. | 3.1–3.2 | L |
 | 1.3 | **Transactional enqueue** (`_session=`). It's the headline feature, so do it early. | 3.2 | S |
